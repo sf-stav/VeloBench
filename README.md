@@ -10,6 +10,9 @@
   <img src="assets/videos/vb_github.gif" alt="VeloBenchmark demo" width="600">
 </p>
 
+> **👋 Try the hosted instance at [velobenchmark.com](https://velobenchmark.com)** — the full
+> web console, no install needed.
+
 VeloBenchmark (`velobench`) is a from-scratch Rust server that packs a full web UI into one binary.
 Point it at any OpenAI-compatible endpoint and you get the whole loop in a browser: chat with a model
 and watch accurate decode-speed and latency instruments in real time → build test suites (prose, code,
@@ -124,6 +127,13 @@ Then: Settings → add a provider + model → chat → run a built-in test → r
 [user manual](docs/user-manual.md) walks every page.
 
 ## Documentation
+
+**💻 [velobenchmark.com](https://velobenchmark.com)** — the hosted, always-current instance of
+VeloBenchmark. Run it entirely from a browser: work through a chat/session, build and run tests,
+read the reports, and compare sessions — no terminal, no install. It tracks the latest release and is
+the fastest way to try the tool. For a fully self-hosted setup, everything it does is available
+locally: install with the one-liner above (or build from source), then point your browser at the
+server it prints.
 
 | Document | Contents |
 |---|---|
