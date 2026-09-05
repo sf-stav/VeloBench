@@ -107,6 +107,33 @@ home directory — no root required). It starts the server, health-checks it, an
 open — e.g. `http://localhost:13843`. Stop it later with `kill $(cat
 ~/.velobenchmark/velobench.pid)`. Full instructions are in **[INSTALL.md](INSTALL.md)**.
 
+Example output (macOS, arm64 — the installer detects your platform either way):
+
+```
+(base) user@host % curl -fsSL https://raw.githubusercontent.com/sf-stav/VeloBench/main/install.sh | sh
+    platform: macos/arm64
+
+VeloBenchmark installer — single-binary LLM benchmarking console
+
+==> trying prebuilt binary for macos/arm64
+    prebuilt binary ready: /Users/doth/.velobenchmark/velobench
+
+==> starting VeloBenchmark on port 13843
+
+  ┌──────────────────────────────────────────────────────┐
+  │                                                      │
+  │   VeloBenchmark is running                           │
+  │                                                      │
+  │   ➜  open:  http://localhost:13843                   │
+  │            http://192.168.178.98:13843               │
+  │                                                      │
+  └──────────────────────────────────────────────────────┘
+    data directory: /Users/doth/.velobenchmark/velobench_data
+    logs:           /Users/doth/.velobenchmark/velobench.log
+    stop:           kill $(cat /Users/doth/.velobenchmark/velobench.pid)
+    re-start:       /Users/doth/.velobenchmark/velobench --host 0.0.0.0 --port 13843   (run it from /Users/doth/.velobenchmark)
+```
+
 <details>
 <summary>Build it yourself instead</summary>
 
