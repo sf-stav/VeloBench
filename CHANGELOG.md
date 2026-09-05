@@ -9,10 +9,11 @@ generic language where they aren't individually notable.
   (`''` inherit / `off` / an effort level). It's honored by the chat path and the concurrent runner,
   with a reasoning dropdown in the test editor for prompt and image steps and an `r:<effort>` badge in
   the step header.
-- **Classification balance.** Every prompt now asks for ~300 tokens of its regime, keeping the regime
-  split comparable across turns.
-- **JSON-mode fixes.** The lossy JSON wire form is fixed (now preserves `tg` / `depth` / `pp` /
-  `image` / `prompt` / `reasoningEffort`). Minor bug fixes and optimizations.
+- **Classification balance (Test functionality).** Every prompt now asks for ~300 tokens of its
+  regime, keeping the regime split comparable across turns in a test.
+- **JSON-mode fixes (Test functionality).** The lossy JSON wire form for test steps is fixed (now
+  preserves `tg` / `depth` / `pp` / `image` / `prompt` / `reasoningEffort`). Minor bug fixes and
+  optimizations.
 
 ## v0.1.0 — Initial release
 
