@@ -19,11 +19,11 @@ Linux or macOS, Intel or Apple Silicon/ARM:
 curl -fsSL https://raw.githubusercontent.com/sf-stav/VeloBench/main/install.sh | sh
 ```
 
-- Downloads the prebuilt binary for your platform **if one is published** (see the repo's
-  **Releases** page); otherwise falls back to building from source.
-- Installs Rust / Node / `protoc` into your home directory if they're missing (no root required,
-  except for an optional system package-manager assist).
-- Starts the server and prints the URL to open.
+- Downloads the prebuilt binary for your platform **if one is published on GitHub Releases** (see
+  the repo's **Releases** page); otherwise **builds from source into `~/.velobenchmark`** (installing
+  Rust / Node / `protoc` into your home directory — no root required, except for an optional system
+  package-manager assist).
+- Starts the server, **health-checks** it, and prints the URL to open.
 
 Stop it later with:
 

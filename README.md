@@ -88,17 +88,17 @@ browser.
 
 ## Installation
 
-Installation is a one-line command, or build-from-source if you prefer. Full instructions are in
-**[INSTALL.md](INSTALL.md)**.
+Installation is one line (Linux & macOS, x86_64 + arm64):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sf-stav/VeloBench/main/install.sh | sh
 ```
 
-It downloads a prebuilt binary for your platform when one is published, falls back to building from
-source otherwise (installing Rust/Node/protoc into your home directory if needed), starts the server,
-and prints the URL to open — e.g. `http://localhost:13843`. Stop it later with `kill $(cat
-~/.velobenchmark/velobench.pid)`.
+The installer downloads a prebuilt binary from GitHub Releases when one exists for your platform, and
+otherwise builds from source into `~/.velobenchmark` (installing Rust, Node and `protoc` into your
+home directory — no root required). It starts the server, health-checks it, and prints the URL to
+open — e.g. `http://localhost:13843`. Stop it later with `kill $(cat
+~/.velobenchmark/velobench.pid)`. Full instructions are in **[INSTALL.md](INSTALL.md)**.
 
 <details>
 <summary>Build it yourself instead</summary>
