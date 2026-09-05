@@ -10,8 +10,7 @@
   <img src="assets/videos/vb_github.gif" alt="VeloBenchmark demo" width="600">
 </p>
 
-> **👋 Try the hosted instance at [velobenchmark.com](https://velobenchmark.com)** — the full
-> web console, no install needed.
+> **Visit our web page for more information: [velobenchmark.com](https://velobenchmark.com)**
 
 VeloBenchmark (`velobench`) is a from-scratch Rust server that packs a full web UI into one binary.
 Point it at any OpenAI-compatible endpoint and you get the whole loop in a browser: chat with a model
@@ -155,12 +154,9 @@ Then: Settings → add a provider + model → chat → run a built-in test → r
 
 ## Documentation
 
-**💻 [velobenchmark.com](https://velobenchmark.com)** — the hosted, always-current instance of
-VeloBenchmark. Run it entirely from a browser: work through a chat/session, build and run tests,
-read the reports, and compare sessions — no terminal, no install. It tracks the latest release and is
-the fastest way to try the tool. For a fully self-hosted setup, everything it does is available
-locally: install with the one-liner above (or build from source), then point your browser at the
-server it prints.
+**💻 [velobenchmark.com](https://velobenchmark.com)** — our website: news, screenshots, and more
+information about VeloBenchmark. VeloBenchmark is a **self-hosted** tool — you install it (one-liner
+above, or build from source) and run it yourself; it is not offered as a hosted service.
 
 | Document | Contents |
 |---|---|
