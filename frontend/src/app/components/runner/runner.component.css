@@ -1,0 +1,199 @@
+:host {
+  display: block;
+}
+
+.runner {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.head h2 {
+  margin: 0 0 2px;
+  font-size: 18px;
+}
+
+.card {
+  border: 1px solid var(--border, #2a3346);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--panel, #141a26);
+}
+
+.start .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.lbl {
+  color: var(--muted, #8b96ab);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.inp {
+  background: var(--bg, #0d1119);
+  border: 1px solid var(--border, #2a3346);
+  color: var(--text, #e8ecf4);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+.inp.tok {
+  width: 80px;
+}
+.inp.lab {
+  width: 180px;
+}
+
+.btn {
+  border: 1px solid var(--border, #2a3346);
+  background: var(--panel2, #1b2231);
+  color: var(--text, #e8ecf4);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.btn.primary {
+  background: var(--accent, #4c86ff);
+  border-color: transparent;
+  color: #fff;
+}
+.btn.danger {
+  border-color: #7d3c48;
+  color: #ff9aa8;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.err {
+  color: #ff9aa8;
+  margin: 4px 0;
+}
+
+.run-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.spacer {
+  flex: 1;
+}
+
+.chip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(76, 134, 255, 0.18);
+  color: #7ea6ff;
+}
+.chip.done {
+  background: rgba(87, 217, 163, 0.15);
+  color: #57d9a3;
+}
+
+.agg {
+  display: flex;
+  gap: 16px;
+  color: var(--muted, #8b96ab);
+  margin-bottom: 10px;
+}
+.agg .strong {
+  color: var(--text, #e8ecf4);
+}
+
+/* Stage-2 look: many small windows, small fonts. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 8px;
+}
+
+.wcard {
+  border: 1px solid var(--border, #2a3346);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: var(--bg, #0d1119);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.wcard.wrun {
+  border-color: rgba(76, 134, 255, 0.55);
+}
+.wcard.wdone {
+  border-color: rgba(87, 217, 163, 0.4);
+}
+.wcard.wfail {
+  border-color: rgba(255, 154, 168, 0.5);
+}
+
+.wline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+}
+.widx {
+  color: var(--muted, #8b96ab);
+}
+.wstate {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.st-queued {
+  color: var(--muted, #8b96ab);
+}
+.st-starting,
+.st-streaming {
+  color: #7ea6ff;
+}
+.st-done {
+  color: #57d9a3;
+}
+.st-failed,
+.st-stopped {
+  color: #ff9aa8;
+}
+
+.wstats {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dim {
+  color: var(--muted, #8b96ab);
+}
+.werr {
+  color: #ff9aa8;
+  font-size: 10px;
+}
+
+.empty {
+  text-align: center;
+  padding: 26px;
+}
+
+.stepbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px dashed var(--border, #2a3346);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  color: var(--text-muted, #96a1b5);
+}
+
+.run-error { border: 1px solid rgba(255, 90, 104, 0.5); background: rgba(255, 90, 104, 0.08); color: #ff8a93; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }

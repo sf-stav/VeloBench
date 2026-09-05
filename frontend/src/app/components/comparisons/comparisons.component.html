@@ -1,0 +1,118 @@
+<div class="comps">
+  <div class="head">
+    <h2>Comparisons</h2>
+    <span class="muted small">pick one session per side — titles, models and rates as on the Sessions page</span>
+  </div>
+
+  <div class="card pickers">
+    <div class="picker-toolbar">
+      <span class="lbl">type</span>
+      <select class="inp" [ngModel]="kindFilter()" (ngModelChange)="kindFilter.set($event); pageA.set(0); pageB.set(0)">
+        <option value="single">single</option>
+        <option value="concurrent">concurrent</option>
+      </select>
+      <input class="inp search" type="search" placeholder="filter by model, title or test name…" [ngModel]="search()" (ngModelChange)="search.set($event); pageA.set(0); pageB.set(0)" />
+      <span class="muted small mono">{{ candidates().length }} session(s)</span>
+      <span class="spacer"></span>
+      <button class="btn primary" [disabled]="!readyToCompare()" (click)="create()">Compare selected</button>
+    </div>
+
+    <div class="picker-grid">
+      <!-- side A -->
+      <div class="picker">
+        <div class="picker-head">
+          <span class="side side-a">A · baseline</span>
+          <span class="spacer"></span>
+          <span class="pager">
+            <button class="mini" [disabled]="page('A') === 0" (click)="turnPage('A', -1)">‹</button>
+            <span class="mono small">{{ page('A') + 1 }}/{{ pageCount() }}</span>
+            <button class="mini" [disabled]="page('A') >= pageCount() - 1" (click)="turnPage('A', 1)">›</button>
+          </span>
+        </div>
+        @for (g of pageItems('A'); track g.session) {
+          <div class="srow" [class.on]="selA() === g.session" (click)="pick('A', g.session)">
+            <div class="srow-main">
+              <span class="badge src" [class.src-conc]="g.kind === 'concurrent'">{{ badgeOf(g) }}</span>
+              @if (titleOf(g)) {
+                <span class="sname">{{ titleOf(g) }}</span>
+                <span class="muted small mono">({{ g.model }})</span>
+              } @else {
+                <span class="sname">{{ g.model }}</span>
+              }
+              <span class="muted small">· {{ g.provider }}</span>
+            </div>
+            <div class="muted small srow-meta">
+              {{ g.turns.length }} turn(s) · {{ fmtDate(g.createdAt) }} · <span class="mono">{{ g.session.slice(0, 8) }}</span>
+              @if (overallTokS(g); as r) {
+                · <span class="mono">{{ r.toFixed(1) }} tok/s</span>
+              }
+              · <span class="mono">{{ g.totalTokens }} tok</span>
+            </div>
+          </div>
+        } @empty {
+          <div class="muted small empty-row">no {{ kindFilter() }} sessions</div>
+        }
+      </div>
+
+      <!-- side B -->
+      <div class="picker">
+        <div class="picker-head">
+          <span class="side side-b">B · compare</span>
+          <span class="spacer"></span>
+          <span class="pager">
+            <button class="mini" [disabled]="page('B') === 0" (click)="turnPage('B', -1)">‹</button>
+            <span class="mono small">{{ page('B') + 1 }}/{{ pageCount() }}</span>
+            <button class="mini" [disabled]="page('B') >= pageCount() - 1" (click)="turnPage('B', 1)">›</button>
+          </span>
+        </div>
+        @for (g of pageItems('B'); track g.session) {
+          <div class="srow" [class.on]="selB() === g.session" (click)="pick('B', g.session)">
+            <div class="srow-main">
+              <span class="badge src" [class.src-conc]="g.kind === 'concurrent'">{{ badgeOf(g) }}</span>
+              @if (titleOf(g)) {
+                <span class="sname">{{ titleOf(g) }}</span>
+                <span class="muted small mono">({{ g.model }})</span>
+              } @else {
+                <span class="sname">{{ g.model }}</span>
+              }
+              <span class="muted small">· {{ g.provider }}</span>
+            </div>
+            <div class="muted small srow-meta">
+              {{ g.turns.length }} turn(s) · {{ fmtDate(g.createdAt) }} · <span class="mono">{{ g.session.slice(0, 8) }}</span>
+              @if (overallTokS(g); as r) {
+                · <span class="mono">{{ r.toFixed(1) }} tok/s</span>
+              }
+              · <span class="mono">{{ g.totalTokens }} tok</span>
+            </div>
+          </div>
+        } @empty {
+          <div class="muted small empty-row">no {{ kindFilter() }} sessions</div>
+        }
+      </div>
+    </div>
+
+    @if (error()) {
+      <div class="err small">{{ error() }}</div>
+    }
+  </div>
+
+  @for (c of comps(); track c.id) {
+    <div class="card rowc" (click)="open(c.id)">
+      <span class="chip">{{ c.kind }}</span>
+      <span class="vs-side">
+        <span class="sname strong">{{ labelOf(c.a) }}</span>
+        @if (modelOf(c.a)) {<span class="muted small mono">{{ modelOf(c.a) }}</span>}
+      </span>
+      <span class="vs">vs</span>
+      <span class="vs-side">
+        <span class="sname strong">{{ labelOf(c.b) }}</span>
+        @if (modelOf(c.b)) {<span class="muted small mono">{{ modelOf(c.b) }}</span>}
+      </span>
+      <span class="spacer"></span>
+      <span class="muted small mono">{{ fmtDate(c.created_at) }}</span>
+      <button class="btn danger" (click)="remove(c.id, $event)">Delete</button>
+    </div>
+  } @empty {
+    <div class="card empty muted">No saved comparisons yet.</div>
+  }
+</div>

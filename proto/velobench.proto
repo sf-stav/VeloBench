@@ -1,0 +1,156 @@
+syntax = "proto3";
+package velobench;
+
+// Client -> server: start an inference run.
+message ChatRequest {
+  string provider_id = 1;
+  string model = 2;
+  repeated ChatMessage messages = 3;
+  bool reasoning_enabled = 4;
+  string reasoning_effort = 5;
+  repeated ParamOverride overrides = 6;
+  // Override the live-stats token budget for the provider session.
+  double max_stats_tokens = 7;
+  // Reset the session aggregation (New Chat).
+  bool reset_session = 8;
+  // Clear live aggregation (points, acceptance log, samples, analytics,
+  // sticky split) but KEEP the session identity — test-runner section resets.
+  bool reset_stats = 14;
+  // Context-fill payload size in tokens, when this turn is a context fill
+  // (test runner). Recorded on the benchmark so reports can name the turn.
+  uint32 fill_tokens = 15;
+  // Which configured model entry to use (uid). Same endpoint model may be
+  // configured multiple times with different params/labels.
+  string model_uid = 16;
+  // Benchmark metadata: the server records the finished run with these.
+  string kind = 9;
+  string label = 10;
+  string session = 11;
+  // Test-runner section this turn belongs to (test runs only).
+  string section = 12;
+  // "Treat LLM sessions as regimes" flag of the test that issued this turn.
+  bool regimes_from_sections = 13;
+}
+
+message ChatMessage {
+  string role = 1;
+  string content = 2;
+  // Data-URL images (multimodal user turns). The server folds these into the
+  // OpenAI content-parts array alongside the text.
+  repeated string images = 3;
+  // Context-fill marker: when > 0 the server REPLACES this message's content
+  // with an exact token-ID slice (n = fill_tokens) from the Gutenberg corpus,
+  // decoded with the model's tokenizer (llama-benchy construction). Applies
+  // to history replays too, so cumulative context tests stay exact.
+  uint32 fill_tokens = 4;
+}
+
+message ParamOverride {
+  string key = 1;
+  string value = 2;
+}
+
+// Server -> client: one frame per message.
+message ServerFrame {
+  oneof payload {
+    Delta delta = 1;
+    Stats stats = 2;
+    Done done = 3;
+  }
+}
+
+// A piece of streamed output for the message bubble.
+message Delta {
+  string content = 1;
+  string reasoning = 2;
+}
+
+message DecodePoint {
+  double t_ms = 1;
+  double tok_s = 2;
+  string kind = 3;
+  string regime = 4;
+}
+
+message AcceptancePoint {
+  double t = 1;
+  double rate = 2;
+}
+
+message SpecDepthPoint {
+  uint32 depth = 1;
+  uint32 count = 2;
+}
+
+message Cluster {
+  double mean = 1;
+  uint32 count = 2;
+  double std = 3;
+  double min = 4;
+  double max = 5;
+}
+
+message ClusterResult {
+  bool bimodal = 1;
+  double split = 2;
+  double eta = 3;
+  repeated Cluster clusters = 4;
+  uint32 total = 5;
+}
+
+message LiveStat {
+  double tok_s = 1;
+  double avg = 2;
+  double min = 3;
+  double median = 4;
+  double max = 5;
+  double tokens = 6;
+  double ttft_ms = 7;
+  double gen_ms = 8;
+  double reasoning_tokens = 9;
+  double content_tokens = 10;
+}
+
+// Computed stats snapshot (session aggregate). Sent periodically while streaming
+// and once more at the end.
+message Stats {
+  repeated DecodePoint decode = 1;
+  repeated double latencies = 2;
+  LiveStat live = 3;
+  ClusterResult clusters = 4;
+  repeated AcceptancePoint acceptance = 5;
+  repeated SpecDepthPoint spec_depth = 6;
+  repeated Regime regimes = 7;
+  string category = 8;
+  // Robust upper bound (ms) for the latency histogram — a high percentile so the
+  // graph isn't zoomed out by a few extreme stall values.
+  double hist_max = 9;
+}
+
+// Per-regime breakdown (from the helper model's output classification).
+message Regime {
+  string category = 1;
+  double token_count = 2;
+  double avg_tok_s = 3;
+  double min_tok_s = 4;
+  double median_tok_s = 5;
+  double max_tok_s = 6;
+  repeated DecodePoint samples = 7;
+}
+
+// End-of-stream: authoritative final stats + usage.
+message Done {
+  double total_ms = 1;
+  double decode_ms = 2;
+  double ttft_ms = 3;
+  double prompt_tokens = 4;
+  double completion_tokens = 5;
+  double final_tok_s = 6;
+  double content_tokens = 7;
+  double reasoning_tokens = 8;
+  // Preformatted per-turn summary line (computed server-side).
+  string meta = 9;
+  // Set when the turn failed upstream (e.g. the model rejected an image):
+  // the client shows the reason and a test run STOPS.
+  string error = 10;
+}

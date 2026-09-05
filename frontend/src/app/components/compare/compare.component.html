@@ -1,0 +1,121 @@
+<section class="cmp-page" #page [class.capturing]="capturing()">
+  <!-- Controls header: never part of an export capture. -->
+  <div class="report-controls" [class.ghost]="capturing()">
+    <div class="rc-group">
+      <button class="btn" (click)="back()">← Comparisons</button>
+      <span class="chip">{{ kind() }}</span>
+    </div>
+    <div class="rc-group rc-right">
+      <button class="btn" (click)="exportPNG()" title="Export the whole comparison report as a PNG">PNG</button>
+      <button class="btn" (click)="exportPDF()" title="Export the whole comparison report as a PDF">PDF</button>
+    </div>
+  </div>
+  <div class="cmp">
+  @if (error()) {
+    <div class="card err">{{ error() }}</div>
+  }
+  @if (a() && b()) {
+    <!-- Report header: brand + comparative analysis + the two sources -->
+    <header class="cmp-header">
+      <div class="cmp-topline">
+        <div class="brand-line"><img src="/favicon-96x96.png" alt="VeloBenchmark logo" /><span>VeloBenchmark</span></div>
+      </div>
+      <div class="cmp-eyebrow">Comparative analysis</div>
+      <div class="idgrid">
+        <div class="card idcard">
+          <div class="chart-head"><span class="chip cat">{{ catA() }}</span><span class="chart-title">A · baseline</span></div>
+          <div class="idtitle" [class.win]="verdictA() === 'win'" [class.lose]="verdictA() === 'lose'">{{ titleA() }}</div>
+          <div class="muted small mono">{{ modelA() }}@if (subA()) { · {{ subA() }}}</div>
+        </div>
+        <div class="card idcard">
+          <div class="chart-head"><span class="chip cat">{{ catB() }}</span><span class="chart-title">B · compare</span></div>
+          <div class="idtitle" [class.win]="verdictB() === 'win'" [class.lose]="verdictB() === 'lose'">{{ titleB() }}</div>
+          <div class="muted small mono">{{ modelB() }}@if (subB()) { · {{ subB() }}}</div>
+        </div>
+      </div>
+    </header>
+
+    <div class="chart-card card">
+      <div class="chart-head"><h3>Head-to-head metrics</h3><span class="chart-unit">B relative to A · green = B better</span></div>
+      <table class="tbl">
+        <thead>
+          <tr><th class="l">metric</th><th class="r">A</th><th class="r">B</th><th class="r">Δ</th><th class="r">Δ%</th></tr>
+        </thead>
+        <tbody>
+          @for (r of rows(); track r.metric) {
+            <tr>
+              <td class="l">{{ r.metric }}<span class="unit"> {{ r.unit }}</span></td>
+              <td class="r mono" [class.good]="r.good === false" [class.bad]="r.good === true">{{ r.aS }}</td>
+              <td class="r mono strong" [class.good]="r.good === true" [class.bad]="r.good === false">{{ r.bS }}</td>
+              <td class="r mono">{{ r.d }}</td>
+              <td class="r mono" [class.good]="r.good === true" [class.bad]="r.good === false">{{ r.pct }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <div class="chart-card card">
+      <div class="chart-head"><h3>Compared metrics</h3><span class="chart-unit">paired bars per metric · longer bar = higher value</span></div>
+      <canvas #bars class="chart bars"></canvas>
+      <div class="muted small">A = {{ titleA() }} (blue) · B = {{ titleB() }} (orange) · within each metric the larger value spans the full width</div>
+    </div>
+
+    <div class="chart-card card">
+      <div class="chart-head"><h3>decode speed distribution</h3><span class="chart-unit">tok/s · 3 s rolling window · identical data &amp; scale to the analytics reports · green = higher median</span></div>
+      <div class="dist-label mono">{{ titleA() }}</div>
+      <canvas #histA id="cvCmpHistA" class="chart dist"></canvas>
+      <div class="dist-label mono b">{{ titleB() }}</div>
+      <canvas #histB id="cvCmpHistB" class="chart dist"></canvas>
+    </div>
+
+    <div class="chart-card card">
+      <div class="chart-head">
+        <h3>speculation depth distribution</h3>
+        <span class="pill est">ESTIMATE</span>
+        <span class="chart-unit">accepted-run length · identical data &amp; scale to the analytics reports · green = deeper</span>
+      </div>
+      <div class="dist-label mono">{{ titleA() }}</div>
+      <canvas #sdA id="cvCmpSdA" class="chart dist"></canvas>
+      <div class="dist-label mono b">{{ titleB() }}</div>
+      <canvas #sdB id="cvCmpSdB" class="chart dist"></canvas>
+      <div class="muted small">runs of 2, 3, 4, … low-latency (speculative) tokens — estimate, not a server counter</div>
+    </div>
+
+    <div class="chart-card card">
+      <div class="chart-head">
+        <h3>acceptance rate estimate</h3>
+        <span class="pill est">ESTIMATE</span>
+        <span class="chart-unit">α̂ · % of run · identical estimator to the analytics reports, shared 0–100% X · green = higher mean α̂</span>
+      </div>
+      <div class="dist-label mono">{{ titleA() }}</div>
+      <canvas #accA id="cvCmpAccA" class="chart dist"></canvas>
+      <div class="dist-label mono b">{{ titleB() }}</div>
+      <canvas #accB id="cvCmpAccB" class="chart dist"></canvas>
+      <div class="muted small">both normalized to 0–100% of their run so the X axes line up exactly</div>
+    </div>
+
+    @if (sectionRows().length) {
+      <div class="chart-card card">
+        <div class="chart-head"><h3>per common section</h3><span class="chart-unit">median decode tok/s where both sessions share a section name</span></div>
+        <table class="tbl">
+          <thead>
+            <tr><th class="l">section</th><th class="r">A</th><th class="r">B</th><th class="r">Δ%</th><th class="r">n</th></tr>
+          </thead>
+          <tbody>
+            @for (s of sectionRows(); track s.name) {
+              <tr>
+                <td class="l mono">{{ s.name }}</td>
+                <td class="r mono">{{ fmtRate(s.a) }}</td>
+                <td class="r mono strong">{{ fmtRate(s.b) }}</td>
+                <td class="r mono" [class.good]="s.pct.startsWith('+')" [class.bad]="!s.pct.startsWith('+')">{{ s.pct }}</td>
+                <td class="r mono">{{ s.turns }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  }
+</div>
+</section>

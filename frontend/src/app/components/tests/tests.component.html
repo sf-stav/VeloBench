@@ -1,0 +1,207 @@
+<section class="tests">
+  <div class="head">
+    <h2>Tests</h2>
+    @if (!editing()) {
+      <button class="btn primary" (click)="startNew()">+ New Test</button>
+    }
+  </div>
+
+  <!-- ================= index ================= -->
+  @if (!editing()) {
+    <div class="filters card">
+      <div class="fgroup">
+        <span class="flabel">Search</span>
+        <input class="inp search" [ngModel]="filterText()" (ngModelChange)="filterText.set($event)" placeholder="Filter by title or description…" />
+      </div>
+      <div class="fgroup">
+        <span class="flabel">Kind</span>
+        <button class="chip" [class.on]="filterKind() === 'all'" (click)="filterKind.set('all')">All</button>
+        <button class="chip" [class.on]="filterKind() === 'built-in'" (click)="filterKind.set('built-in')">Built-in</button>
+        <button class="chip" [class.on]="filterKind() === 'mine'" (click)="filterKind.set('mine')">Mine</button>
+      </div>
+    </div>
+
+    @if (filtered().length === 0) {
+      <div class="empty muted card">No tests match. Create one with "+ New Test".</div>
+    }
+
+    <div class="list">
+      @for (t of filtered(); track t.id) {
+        <div class="card trow">
+          <div class="tmain">
+            <div class="ttitle">
+              <button class="favstar" [class.on]="t.favorite" (click)="toggleFav(t)"
+                      [title]="t.favorite ? 'Remove from favorites' : 'Add to favorites'">{{ t.favorite ? '★' : '☆' }}</button>
+              {{ t.title }}
+              @if (t.prebuilt) {
+                <span class="badge bi" title="Built-in test — view and run only">built-in</span>
+              }
+              @if (t.regimesFromSections) {
+                <span class="badge reg" title="Treat LLM sessions as regimes: the report splits by Section titles">section regimes</span>
+              }
+            </div>
+            @if (t.description) {
+              <div class="muted small tdesc">{{ t.description }}</div>
+            }
+            <div class="muted small tmeta">
+              {{ sectionCount(t) }} section(s) · {{ t.steps.length - sectionCount(t) }} step(s)
+              @if (t.temperature != null) { · temp {{ t.temperature }} }
+              @if (t.maxTokens != null) { · max {{ t.maxTokens }} tok }
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" (click)="run(t)">Run</button>
+            <button class="btn" (click)="duplicate(t)" title="Save an editable copy">Copy</button>
+            @if (t.prebuilt) {
+              <button class="btn" (click)="startEdit(t)">View</button>
+            } @else {
+              <button class="btn" (click)="startEdit(t)">Edit</button>
+              <button class="btn danger" (click)="remove(t)">Del</button>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ================= editor ================= -->
+  @if (editing(); as e) {
+    <div class="card editor">
+      <div class="ehead">
+        <h3>{{ editorHeading() }}</h3>
+        <div class="modes">
+          <button class="chip" [class.on]="editMode() === 'ui'" (click)="editMode.set('ui')" [disabled]="readonly_()">Builder</button>
+          <button class="chip" [class.on]="editMode() === 'json'" (click)="toJsonMode()">JSON</button>
+        </div>
+      </div>
+
+      <div class="props">
+        <label class="field">
+          <span class="flabel">Title</span>
+          <input class="inp" [ngModel]="e.title" (ngModelChange)="patch({ title: $event })" [disabled]="readonly_()" placeholder="Test title" />
+        </label>
+        <label class="field">
+          <span class="flabel">Favorite</span>
+          <button type="button" class="favstar big" [class.on]="e.favorite" (click)="toggleFavEditing()"
+                  [title]="e.favorite ? 'Remove from favorites' : 'Add to favorites'">{{ e.favorite ? '★' : '☆' }}</button>
+        </label>
+        <label class="field wide">
+          <span class="flabel">Description</span>
+          <input class="inp" [ngModel]="e.description" (ngModelChange)="patch({ description: $event })" [disabled]="readonly_()" placeholder="What this test measures" />
+        </label>
+        <label class="field">
+          <span class="flabel">Temperature</span>
+          <input class="inp" type="number" step="0.1" min="0" max="2" [ngModel]="e.temperature" (ngModelChange)="patch({ temperature: toNumOrNull($event) })" [disabled]="readonly_()" placeholder="model default" />
+        </label>
+        <label class="field">
+          <span class="flabel">Max output tok</span>
+          <input class="inp" type="number" min="1" [ngModel]="e.maxTokens" (ngModelChange)="patch({ maxTokens: toNumOrNull($event) })" [disabled]="readonly_()" placeholder="model default" />
+        </label>
+        <label class="field wide check">
+          <input type="checkbox" [ngModel]="e.regimesFromSections" (ngModelChange)="patch({ regimesFromSections: $event })" [disabled]="readonly_()" />
+          <span title="Split the report by Section titles (per-section sub-report + graphs) instead of the deterministic per-token regime split">Treat LLM sessions as regimes</span>
+        </label>
+      </div>
+
+      @if (editMode() === 'ui') {
+        <div class="steps">
+          @for (s of e.steps; track $index) {
+            <div class="card step" [class.fixed]="$index === 0">
+              <div class="step-head">
+                <span class="badge kind" [class.k-sec]="s.type === 'section'" [class.k-prm]="s.type === 'prompt'" [class.k-ctx]="s.type === 'context'" [class.k-img]="s.type === 'image'">{{ stepLabel(s) }}</span>
+                <span class="muted small mono">{{ $index + 1 }}</span>
+                @if ($index > 0 && !readonly_()) {
+                  <div class="step-actions">
+                    <button class="mini" (click)="moveStep($index, -1)" title="Move up" [disabled]="$index === 1">↑</button>
+                    <button class="mini" (click)="moveStep($index, 1)" title="Move down" [disabled]="$index === e.steps.length - 1">↓</button>
+                    <button class="mini danger" (click)="removeStep($index)" title="Delete step">×</button>
+                  </div>
+                }
+                @if ($index === 0) {
+                  <span class="muted small">first — fixed</span>
+                }
+              </div>
+              @if (s.type === 'section') {
+                <div class="secrow">
+                  <input class="inp" [ngModel]="s.title" (ngModelChange)="updateStep($index, { title: $event })" [disabled]="readonly_()" placeholder="Section title (shows as progress; the regime name when 'Treat LLM sessions as regimes' is on)" />
+                  @if ($index > 0) {
+                    <label class="secreset" title="When checked the section starts a new LLM session (clears the conversation history). When unchecked it is just a progress marker.">
+                      <input type="checkbox" [ngModel]="s.reset" (ngModelChange)="updateStep($index, { reset: $event })" [disabled]="readonly_()" />
+                      <span>Reset context</span>
+                    </label>
+                  }
+                </div>
+              } @else if (s.type === 'prompt') {
+                <textarea class="inp" rows="2" [ngModel]="s.text" (ngModelChange)="updateStep($index, { text: $event })" [disabled]="readonly_()" placeholder="Prompt sent to the model as-is"></textarea>
+              } @else if (s.type === 'image') {
+                <div class="secrow">
+                  <select class="inp" [ngModel]="s.image" (ngModelChange)="updateStep($index, { image: $event })" [disabled]="readonly_()">
+                    <option value="" disabled>choose an image…</option>
+                    @for (img of testImages(); track img.name) {
+                      <option [value]="img.name" [selected]="s.image === img.name">{{ img.name }} — {{ fmtBytes(img.bytes) }}</option>
+                    }
+                  </select>
+                </div>
+                <textarea class="inp" rows="2" [ngModel]="s.prompt" (ngModelChange)="updateStep($index, { prompt: $event })" [disabled]="readonly_()" placeholder="Prompt sent with the image"></textarea>
+              } @else if (s.type === 'bench') {
+                <div class="ctxrow" title="Fixed-shape run: ONE request with depth corpus tokens + pp prompt tokens, generating tg tokens">
+                  <span class="muted small">depth</span>
+                  <input class="inp" type="number" min="0" [ngModel]="s.depth" (ngModelChange)="updateStep($index, { depth: toNum($event) })" [disabled]="readonly_()" />
+                  <span class="muted small">pp</span>
+                  <input class="inp" type="number" min="0" [ngModel]="s.pp" (ngModelChange)="updateStep($index, { pp: toNum($event) })" [disabled]="readonly_()" />
+                  <span class="muted small">tg</span>
+                  <input class="inp" type="number" min="1" [ngModel]="s.tg" (ngModelChange)="updateStep($index, { tg: toNum($event) })" [disabled]="readonly_()" />
+                  <span class="muted small mono">{{ (s.depth || 0) + (s.pp || 0) }} tok in · {{ s.tg || 0 }} out</span>
+                </div>
+              } @else {
+                <div class="ctxrow">
+                  <span class="muted small">Fill context with lorem ipsum ·</span>
+                  <select class="inp" [ngModel]="s.k" (ngModelChange)="updateStep($index, { k: toNum($event) })" [disabled]="readonly_()">
+                    @for (k of contextSizes; track k) {
+                      <option [value]="k" [selected]="s.k === k">{{ k }}K</option>
+                    }
+                  </select>
+                  <span class="muted small">tokens (K = 1024)</span>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        @if (!readonly_()) {
+          <div class="addrow">
+            <span class="muted small flabel">Add:</span>
+            <button class="btn" (click)="addStep('section')">Add Section</button>
+            <button class="btn" (click)="addStep('prompt')">Add Prompt</button>
+            <button class="btn" (click)="addStep('context')">Add Context</button>
+            <button class="btn" (click)="addStep('bench')" title="Fixed-shape run: context depth + prompt tokens in ONE request, fixed generation length">Add Bench</button>
+            <button class="btn" (click)="addStep('image')" title="Send an image + prompt to the model (vision request). Stops the test with an error if the model rejects images.">Add Image</button>
+          </div>
+        }
+      } @else {
+        <div class="jsonwrap">
+          <textarea class="inp json" [(ngModel)]="jsonText" rows="18" spellcheck="false" [disabled]="readonly_()"></textarea>
+          @if (jsonError()) {
+            <div class="jerr">{{ jsonError() }}</div>
+          } @else if (!readonly_()) {
+            <div class="muted small">Edit the JSON directly — it is validated strictly when you apply it.</div>
+          }
+          @if (!readonly_()) {
+            <button class="btn" (click)="applyJson()">Apply JSON</button>
+          }
+        </div>
+      }
+
+      @if (!readonly_()) {
+        <div class="saverow">
+          <button class="btn primary" (click)="save()" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save test' }}</button>
+          <button class="btn" (click)="cancel()">Cancel</button>
+        </div>
+      } @else {
+        <div class="saverow">
+          <button class="btn" (click)="cancel()">Close</button>
+        </div>
+      }
+    </div>
+  }
+</section>

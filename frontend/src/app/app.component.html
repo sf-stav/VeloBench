@@ -1,0 +1,63 @@
+<div class="app">
+  <aside class="sidebar">
+    <div class="logo"><img src="/favicon-96x96.png" alt="VeloBenchmark logo" /><span>VeloBenchmark</span></div>
+    <nav>
+      @for (item of nav; track item.path) {
+        <a [routerLink]="item.path" routerLinkActive="active" class="nav-item">
+          <span class="icon">{{ item.icon }}</span>
+          <span class="label">{{ item.label }}</span>
+        </a>
+      }
+    </nav>
+    <div class="sidebar-foot">
+      <div class="status">
+        <span class="dot" [class.up]="!!settingsService.activeProvider()"></span>
+        <span class="status-text">{{ active() }}</span>
+      </div>
+    </div>
+  </aside>
+
+  <section class="main">
+    <header class="topbar">
+      <div class="provider">{{ providerName() }}</div>
+      @if (configs().length) {
+        <select #configSelect class="config-select inp" [value]="currentConfigKey()" (change)="onConfigChange($event)" title="Model + provider config">
+          @for (c of configs(); track c.key) {
+            <option [value]="c.key">{{ c.label }}</option>
+          }
+        </select>
+      } @else {
+        <div class="model">{{ active() }}</div>
+      }
+            <div class="spacer"></div>
+      @if (telEnabled()) {
+        <span class="tel-ind" [class.conn]="telConnected()" title="Telemetry receiver (Settings → Telemetry)">
+          <span class="dot"></span>
+          @if (telConnected()) {<span class="lbl">client</span>}
+        </span>
+      }
+      @if (telEnabled()) {
+        <span class="tel-ind" [class.conn]="telConnected()" title="Telemetry receiver (Settings → Telemetry)">
+          <span class="dot"></span>
+          @if (telConnected()) {<span class="lbl">client</span>}
+        </span>
+      }
+        <select class="fav-select inp" [(ngModel)]="favSel" (click)="refreshFavs()"
+                title="Favorite tests — pick one and press Run">
+          @if (favs().length) {
+            <option value="" disabled>★ Favorites…</option>
+            @for (t of favs(); track t.id) {
+              <option [value]="t.id">★ {{ t.title }}</option>
+            }
+          } @else {
+            <option value="" disabled>★ No favorites — star tests on the Tests page</option>
+          }
+        </select>
+        <button class="btn primary" (click)="runFavorite()" [disabled]="!favSel"
+                title="Run the selected favorite test — streams live on the Chat screen">Run</button>
+    </header>
+    <div class="content">
+      <router-outlet></router-outlet>
+    </div>
+  </section>
+</div>

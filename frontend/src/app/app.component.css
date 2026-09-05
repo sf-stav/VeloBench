@@ -1,0 +1,121 @@
+.app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 208px;
+  flex: 0 0 auto;
+  background: #0d1320;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 10px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 17px;
+  color: var(--text);
+  padding: 6px 8px 16px;
+  letter-spacing: .01em;
+}
+.logo img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.logo span { color: var(--text); }
+
+nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: background .14s, color .14s;
+}
+.nav-item:hover { background: #16202f; color: var(--text); }
+.nav-item.active {
+  background: linear-gradient(135deg, #1d3a6e, #182a4d);
+  color: #dbeafe;
+}
+.nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+
+.sidebar-foot {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 0;
+}
+.status .dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--red); flex: 0 0 auto;
+}
+.status .dot.up { background: var(--green); box-shadow: 0 0 8px rgba(46,204,113,.7); }
+.status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  background: #0f1522;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.topbar .provider { font-weight: 700; font-size: 14px; }
+.topbar .model {
+  color: var(--muted);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
+.topbar .spacer { flex: 1; }
+.api-note { font-size: 11px; color: var(--muted); }
+.config-select.inp { width: auto; max-width: 320px; background: #0d1320; }
+
+.content { flex: 1; min-height: 0; overflow: hidden; }
+
+/* Favorites dropdown + Run in the top bar */
+.fav-select { max-width: 260px; }
+
+/* Telemetry receiver indicator (topbar) */
+.tel-ind { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--border, #2a3346); border-radius: 999px; font-size: 11px; color: var(--text-muted, #96a1b5); }
+.tel-ind .dot { width: 9px; height: 9px; border-radius: 50%; background: #35d07f; box-shadow: 0 0 7px #35d07f77; }
+.tel-ind.conn { border-color: #35d07f66; color: #35d07f; }
+
+/* Telemetry receiver indicator (topbar) */
+.tel-ind { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--border, #2a3346); border-radius: 999px; font-size: 11px; color: var(--text-muted, #96a1b5); }
+.tel-ind .dot { width: 9px; height: 9px; border-radius: 50%; background: #35d07f; box-shadow: 0 0 7px #35d07f77; }
+.tel-ind.conn { border-color: #35d07f66; color: #35d07f; }

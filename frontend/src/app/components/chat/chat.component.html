@@ -1,0 +1,171 @@
+<section class="chat">
+  <div class="chat-head">
+    <div class="model-name mono">{{ currentModelLabel() }}</div>
+    <div class="mini-strip">
+      <span class="chip">⚡ {{ live().tok_s.toFixed(1) }} tok/s</span>
+      <span class="chip">TTFT {{ fmtMs(live().ttft_ms) }}</span>
+      <span class="chip">tokens {{ live().tokens.toFixed(0) }}</span>
+    </div>
+  </div>
+
+  <div class="chat-body">
+    <div class="chat-left">
+      <!-- pending image attachments -->
+      @if (pendingImages().length) {
+        <div class="attach-row">
+          <span class="muted small">{{ pendingImages().length }}/{{ maxAttach }}</span>
+          @for (u of pendingImages(); track $index) {
+            <div class="attach-thumb">
+              <img [src]="u" alt="attachment" />
+              <button class="rm" (click)="removeImage($index)" title="Remove image">×</button>
+            </div>
+          }
+        </div>
+      }
+
+      <div class="messages" #msgScroller (scroll)="onScroll()">
+        @if (sessionActive()) {
+          <div class="session-banner">● ongoing session — reloaded from server</div>
+        }
+        @for (m of messages(); track track($index)) {
+          @if (m.role === 'user') {
+            <div class="msg user">
+              <div class="bubble" [class.fillbubble]="m.fill">
+                @if (m.images?.length) {
+                  @for (u of m.images; track $index) {
+                    <img class="msg-image" [src]="u" alt="attachment" />
+                  }
+                }
+                {{ m.content }}
+              </div>
+            </div>
+          } @else if (m.role === 'system') {
+            <div class="msg system"><div class="bubble">{{ m.content }}</div></div>
+          } @else {
+            <div class="msg assistant">
+              <div class="bubble">
+                @if (m.reasoning) {
+                  <!-- Run complete: reasoning is kept and the user may expand it. -->
+                  <details class="thinking">
+                    <summary>💭 thinking · {{ m.reasoningTokens ?? 0 }} tok</summary>
+                    <div class="thinking-body" [appMarkdown]="m.reasoning"></div>
+                  </details>
+                }
+                <div [appMarkdown]="m.content"></div>
+                @if (m.meta) {
+                  <div class="msg-meta">{{ m.meta }}</div>
+                }
+              </div>
+            </div>
+          }
+        }
+
+        @if (streaming()) {
+          <div class="msg assistant">
+            <div class="bubble">
+              @if (streamReasoning()) {
+                <!-- Open while reasoning, force-collapsed as soon as content
+                     starts. Locked during generation: only after the run can
+                     the user expand it (see onSummaryClick). -->
+                <details class="thinking" [class.locked]="streaming()" [open]="!streamContent()">
+                  <summary (click)="onSummaryClick($event)">💭 thinking · {{ streamReasoningTokens() }} tok</summary>
+                  <div
+                    #thinkingBody
+                    class="thinking-body"
+                    [appMarkdown]="streamReasoning()"
+                    (scroll)="onThinkingScroll()"
+                  ></div>
+                </details>
+              }
+              @if (streamContent()) {
+                <div [appMarkdown]="streamContent()"></div>
+              } @else if (!streamReasoning()) {
+                <span class="typing">▊ thinking…</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+
+      @if (session.testRun(); as tr) {
+        <div class="testpanel" [class.done]="tr.finished">
+          <div class="tp-line1">
+            @if (!tr.finished) {
+              <span class="tp-inprogress">IN PROGRESS:</span>
+            }
+            <span class="tp-title">{{ tr.test.title }}</span>
+            @if (tr.test.description) {
+              <span class="muted small tp-desc">— {{ truncDesc(tr.test.description) }}</span>
+            }
+          </div>
+          @if (tr.error) {
+            <div class="tp-error mono small" title="The test stopped because of this error">{{ tr.error }}</div>
+          }
+          <div class="tp-bar" [class.done]="tr.finished">
+            <div class="tp-bar-fill" [style.width.%]="tr.total ? (tr.done / tr.total) * 100 : 0"></div>
+          </div>
+          <div class="tp-line2">
+            <span class="mono">{{ tr.done }}/{{ tr.total }}</span>
+            <span class="muted">·</span>
+            <span>{{ tr.section }}</span>
+            <span class="muted small">{{ tr.finished ? 'complete' : (session.streaming() ? 'streaming…' : 'running…') }}</span>
+            <span class="tp-actions">
+              @if (tr.finished) {
+                <button class="btn" (click)="session.testClose()">Close</button>
+              } @else {
+                <button class="btn danger" (click)="stopTest()">Stop</button>
+              }
+            </span>
+          </div>
+        </div>
+      } @else {
+        <div class="composer">
+        <div class="composer-top">
+          <span class="ctx-est" title="Estimated used context for this conversation (chars/4 heuristic), in kilo-tokens">ctx ≈ {{ ctxEstimate() }}K</span>
+          <div class="fillright"
+               title="Fill Context — prefill test: sends lorem ipsum of the chosen size (K = 1024 tokens) to measure TTFT / prefill speed. The chat box is disabled while active and the selector returns to OFF after sending.">
+            <span class="filllabel">Fill Context dropdown:</span>
+            <select class="fillselect" (change)="setFill($any($event.target).value)">
+              @for (o of fillOptions; track o.v) {
+                <option [value]="o.v" [selected]="fillK === o.v">{{ o.label }}</option>
+              }
+            </select>
+          </div>
+        </div>
+        <div class="composer-row">
+          <button class="icon-btn" (click)="newChat()" title="New Chat — start a fresh session (old turns stay saved)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </button>
+          <button class="icon-btn" (click)="fileInput.click()" title="Attach image" [class.has]="pendingImages().length > 0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          </button>
+          <input #fileInput type="file" accept="image/*" multiple hidden (change)="onFiles($event)" />
+          <textarea
+            #ta
+            class="inp input"
+            [(ngModel)]="input"
+            [disabled]="fillK > 0"
+            [placeholder]="fillK > 0 ? 'Fill Context active — Send submits ' + (fillK / 1024) + 'K tokens of lorem ipsum' : 'Type a message…  (Enter to send, Shift+Enter for newline)'"
+            (keydown)="onKey($event)"
+            (input)="autoGrow(ta)"
+            (paste)="onPaste($event)"
+          ></textarea>
+          @if (streaming()) {
+            <button class="stop" (click)="stop()">⏹ Stop</button>
+          } @else {
+            <button class="send" [disabled]="fillK === 0 && !input.trim() && !pendingImages().length" (click)="send()">Send</button>
+          }
+        </div>
+      </div>
+      }
+    </div>
+
+    <aside class="chat-right">
+      @if (hasModel()) {
+        <app-stats-panel [scope]="'chat'"></app-stats-panel>
+      } @else {
+        <div class="muted">Select a model+provider config (top bar) to see live stats.</div>
+      }
+    </aside>
+  </div>
+</section>

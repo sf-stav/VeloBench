@@ -1,0 +1,250 @@
+:host {
+  display: block;
+}
+
+.comps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.head h2 {
+  margin: 0 0 2px;
+  font-size: 18px;
+}
+
+.card {
+  border: 1px solid var(--border, #2a3346);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--panel, #141a26);
+}
+
+.picker-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 1100px) {
+  .picker-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.picker {
+  border: 1px solid var(--border, #2a3346);
+  border-radius: 8px;
+  background: var(--bg, #0d1119);
+  overflow: hidden;
+}
+
+.picker-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border, #2a3346);
+}
+
+.side {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.side-a {
+  background: rgba(76, 134, 255, 0.18);
+  color: #7ea6ff;
+}
+.side-b {
+  background: rgba(245, 169, 127, 0.16);
+  color: #f5a97f;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mini {
+  border: 1px solid var(--border, #2a3346);
+  background: var(--panel2, #1b2231);
+  color: var(--text, #e8ecf4);
+  border-radius: 5px;
+  width: 22px;
+  height: 20px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+.mini:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.srow {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(42, 51, 70, 0.4);
+  cursor: pointer;
+}
+.srow:last-child {
+  border-bottom: none;
+}
+.srow:hover {
+  background: rgba(76, 134, 255, 0.06);
+}
+.srow.on {
+  background: rgba(76, 134, 255, 0.12);
+  box-shadow: inset 3px 0 0 #4c86ff;
+}
+
+.srow-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sname {
+  font-weight: 600;
+  font-size: 13px;
+}
+.srow-meta {
+  margin-top: 2px;
+}
+
+.badge.src {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #aab6c9;
+}
+.badge.src-conc {
+  background: rgba(135, 206, 235, 0.12);
+  border-color: rgba(135, 206, 235, 0.45);
+  color: #a8d8ef;
+}
+
+.empty-row {
+  padding: 14px;
+  text-align: center;
+}
+
+.lbl {
+  color: var(--muted, #8b96ab);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.inp {
+  background: var(--bg, #0d1119);
+  border: 1px solid var(--border, #2a3346);
+  color: var(--text, #e8ecf4);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.inp.search {
+  width: 280px;
+}
+
+.btn {
+  border: 1px solid var(--border, #2a3346);
+  background: var(--panel2, #1b2231);
+  color: var(--text, #e8ecf4);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.btn.primary {
+  background: var(--accent, #4c86ff);
+  border-color: transparent;
+  color: #fff;
+}
+.btn.primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.btn.danger {
+  border-color: #7d3c48;
+  color: #ff9aa8;
+}
+
+.chip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(76, 134, 255, 0.18);
+  color: #7ea6ff;
+  text-transform: uppercase;
+}
+
+.vs {
+  color: var(--muted, #8b96ab);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.err {
+  color: #ff9aa8;
+  margin-top: 8px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.rowc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.rowc:hover {
+  border-color: var(--accent, #4c86ff);
+}
+
+.empty {
+  text-align: center;
+  padding: 26px;
+}
+
+.mono {
+  font-family: ui-monospace, monospace;
+}
+.muted {
+  color: var(--muted, #8b96ab);
+}
+.small {
+  font-size: 11px;
+}
+.strong {
+  font-weight: 700;
+}
+
+.vs-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vs-side .sname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

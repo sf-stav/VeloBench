@@ -1,0 +1,349 @@
+<section class="settings">
+  <h2>Settings</h2>
+  <p class="muted sub">Everything is stored server-side — your browser never holds keys.</p>
+
+  <div class="tabs">
+    <button class="tab" [class.on]="activeTab === 'providers'" (click)="activeTab = 'providers'">Providers</button>
+    <button class="tab" [class.on]="activeTab === 'helper'" (click)="activeTab = 'helper'">Helper Model</button>
+    <button class="tab" [class.on]="activeTab === 'stats'" (click)="activeTab = 'stats'">Stats &amp; Display</button>
+    <button class="tab" [class.on]="activeTab === 'telemetry'" (click)="activeTab = 'telemetry'">Telemetry</button>
+  </div>
+
+  <!-- ============ PROVIDERS ============ -->
+  @if (activeTab === 'providers') {
+    <div class="card">
+      <div class="card-head">
+        <h3>Providers &amp; models</h3>
+        <button class="btn primary" (click)="newProvider()">＋ Add provider</button>
+      </div>
+
+      @if (providers().length) {
+        <div class="field">
+          <label>Default model</label>
+          <select class="inp" [value]="defaultModelKey" (change)="onDefaultModelChange($event)">
+            @for (c of defaultConfigs; track c.key) {
+              <option [value]="c.key">{{ c.label }}</option>
+            }
+          </select>
+          <div class="hint muted">Model selected when the app loads / a new session starts. Entries with a label show it here.</div>
+        </div>
+      }
+
+      @if (providers().length === 0) {
+        <div class="empty muted">No providers yet. Add one to begin.</div>
+      } @else {
+        @for (p of providers(); track p.id) {
+          <div class="provider-row" [class.active]="p.id === settings().active_provider_id">
+            <div class="pr-info">
+              <div class="pr-name">{{ p.name }}
+                @if (p.id === settings().active_provider_id) { <span class="tag">active</span> }
+              </div>
+              <div class="pr-meta muted mono">{{ p.base_url }}</div>
+              <div class="pr-models muted">{{ p.models.length }} model(s) · {{ modelsLabel(p) }}</div>
+              @if (testResult()[p.id]) { <div class="pr-models muted">{{ testResult()[p.id] }}</div> }
+            </div>
+            <div class="pr-actions">
+              <button class="btn" (click)="selectProvider(p.id)">Use</button>
+              <button class="btn" (click)="testProvider(p)" [disabled]="testing() === p.id">
+                {{ testing() === p.id ? 'testing…' : 'Test' }}
+              </button>
+              <button class="btn" (click)="editProvider(p)">Edit</button>
+              <button class="btn danger" (click)="deleteProvider(p)">Del</button>
+            </div>
+
+            <div class="model-list">
+              @for (m of p.models; track m.uid || m.id) {
+                <div class="model-row">
+                  <div class="m-main">
+                    <span class="m-label">{{ m.label || m.id }}</span>
+                    @if (m.label) { <span class="m-id mono muted">{{ m.id }}</span> }
+                    @if (paramsSummary(m)) {
+                      <span class="m-chip params mono" [title]="paramsTitle(m)">{{ paramsSummary(m) }}</span>
+                    }
+                  </div>
+                  <span class="m-chip tok" [title]="tokSources()[mKey(p, m)] || 'no tokenizer — counts are flagged estimates'">
+                    @if (tokSources()[mKey(p, m)]) {
+                      <span class="ok">✓ tokenizer</span><span class="src mono">{{ tokSources()[mKey(p, m)] }}</span>
+                    } @else {
+                      <span class="none">— no tokenizer (flagged estimates)</span>
+                    }
+                  </span>
+<span class="m-chip calib"
+                        [class.spin]="calibInfo(p, m)?.state === 'running'"
+                        [class.warn]="calibInfo(p, m)?.state === 'failed'"
+                        title="live-stats calibration (warmup probe + per-turn refinement)">
+                    @if (calibInfo(p, m)?.state === 'running') {
+                      <span class="spinner"></span> calibrating…
+                    } @else if (calibInfo(p, m)?.state === 'done') {
+                      calibrated ×{{ (calibInfo(p, m)?.ratio ?? 1).toFixed(2) }} · {{ Math.round(calibInfo(p, m)?.weight ?? 0) }} tok
+                    } @else if (calibInfo(p, m)?.state === 'failed') {
+                      ✗ <span [title]="calibInfo(p, m)?.error || 'probe failed'">{{ chipErr(p, m) }}</span> — seeds on first turn
+                    } @else if (m.live_calibration) {
+                      calibrated ×{{ m.live_calibration.ratio.toFixed(2) }} · {{ Math.round(m.live_calibration.weight) }} tok
+                    } @else {
+                      not calibrated
+                    }
+                  </span>
+                  <div class="m-actions">
+                    <button class="btn sm" (click)="recalibrate(mKey(p, m))"
+                            [disabled]="calibInfo(p, m)?.state === 'running'"
+                            [title]="'(Re)calibrate — one warmup call, refreshes the live-stats ratio'">
+                      {{ calibInfo(p, m)?.state === 'running' ? '…' : '↻' }}
+                    </button>
+                    <button class="btn sm" (click)="openEditModel(p, m)" [title]="'Edit ' + (m.label || m.id)">✎</button>
+                    <button class="btn sm" (click)="duplicateModel(p, m)" [title]="'Duplicate ' + (m.label || m.id) + ' as a new entry (e.g. another parameter set)'">⧉</button>
+                    <button class="btn danger sm" (click)="removeModel(p, m)" [title]="'Remove ' + (m.label || m.id)">×</button>
+                  </div>
+                </div>
+              }
+              <button class="btn sm add-model" (click)="openAddModel(p)">＋ Add model</button>
+            </div>
+          </div>
+        }
+      }
+
+      @if (editing) {
+        <div class="editor">
+          <h4>@if (form.id) { Edit provider } @else { Add provider }</h4>
+          <div class="hint muted" style="margin-bottom:8px">
+            Providers are connection-only: identity + endpoint + key. Models (with their own parameters,
+            labels, tokenizers and calibration) are managed per provider in the model list.
+          </div>
+          <div class="field">
+            <label>Name</label>
+            <input class="inp" [(ngModel)]="form.name" placeholder="My GPU box" />
+          </div>
+          <div class="field">
+            <label>Base URL</label>
+            <input class="inp" [(ngModel)]="form.base_url" placeholder="https://api.openai.com/v1" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label>API key <span class="muted">(optional if keyless)</span></label>
+            <input class="inp" [(ngModel)]="form.api_key" type="password" placeholder="sk-…" spellcheck="false" />
+          </div>
+          <div class="actions">
+            <button class="btn primary" (click)="saveProvider()">Save</button>
+            <button class="btn" (click)="editing = false">Cancel</button>
+          </div>
+        </div>
+      }
+
+      @if (modelEditor) {
+        <div class="editor">
+          <h4>@if (modelEditor === 'new') { Add model } @else { Edit model }</h4>
+          <div class="field">
+            <label>Model id <button class="link" (click)="openPicker('model')">pick / autocomplete</button></label>
+            <input class="inp" [(ngModel)]="modelForm.id" placeholder="gpt-4o-mini" spellcheck="false" name="mid" />
+          </div>
+          <div class="field">
+            <label>Label <span class="muted">(optional — shown in selectors; use it to run the same model with different parameters)</span></label>
+            <input class="inp" [(ngModel)]="modelForm.label" placeholder="e.g. creative / precise / long-context" spellcheck="false" name="mlabel" />
+          </div>
+
+          <div class="field param-block">
+            <label>Parameters <span class="muted">(applied to this model entry only)</span></label>
+            @for (pr of modelFormParams; track i; let i = $index) {
+              <div class="param-row">
+                <input class="inp" [(ngModel)]="pr.key" placeholder="key (e.g. repetition_penalty)" />
+                <input class="inp" [(ngModel)]="pr.value" placeholder="value (e.g. 1.1)" />
+                <button class="btn danger" (click)="removeModelParam(i)">−</button>
+              </div>
+            }
+            <button class="btn" (click)="addModelParam()">＋ Add parameter</button>
+            <div class="hint muted">Numeric keys (temperature, top_k, top_p, min_p, penalties, max_tokens, seed, …) are stored as numbers.</div>
+          </div>
+
+          <div class="field">
+            <label>Tokenizer <span class="muted">(override — HF repo id or local tokenizer.json path; empty = auto-detect)</span></label>
+            <div class="reasoning-row">
+              <input class="inp" [(ngModel)]="modelForm.tokenizer" placeholder="e.g. Qwen/Qwen3-30B-A3B" spellcheck="false" name="mtok" />
+              <button class="btn" (click)="checkModelTokenizer()" [disabled]="tokenizerChecking || !modelForm.id">
+                {{ tokenizerChecking ? 'checking…' : 'Check' }}
+              </button>
+            </div>
+            @if (tokenizerStatus) {
+              <div class="hint muted">{{ tokenizerStatus }}</div>
+            }
+          </div>
+
+          <div class="field">
+            <label>Reasoning</label>
+            <div class="reasoning-row">
+              <label class="toggle"><input type="checkbox" [(ngModel)]="modelForm.reasoning_enabled" /><span>enabled</span></label>
+              <select class="inp" [(ngModel)]="modelForm.reasoning_effort" [disabled]="!modelForm.reasoning_enabled">
+                <option value="">none</option>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+                <option value="xhigh">xhigh</option>
+                <option value="max">max</option>
+              </select>
+            </div>
+          </div>
+
+          @if (modelModelError) { <div class="hint err">{{ modelModelError }}</div> }
+          <div class="actions">
+            <button class="btn primary" (click)="saveModel()">Save model</button>
+            <button class="btn" (click)="closeModelEditor()">Cancel</button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ============ HELPER MODEL ============ -->
+  @if (activeTab === 'helper') {
+    <div class="card">
+      <div class="card-head">
+        <h3>Helper model <span class="muted small">for meta-analysis (classification)</span></h3>
+      </div>
+
+      @if (hasHelper && !helperEdit) {
+        <div class="helper-info">
+          <div class="pr-name">{{ helperCfg!.model }}</div>
+          <div class="pr-meta muted mono">{{ helperLabel() }}</div>
+        </div>
+        <div class="actions">
+          <button class="btn" (click)="startHelperEdit()">Edit</button>
+          <button class="btn danger" (click)="removeHelper()">Remove</button>
+        </div>
+      } @else {
+        <div class="editor">
+          <div class="field">
+            <label>Provider (ref) <span class="muted">— or enter a URL directly</span></label>
+            <select class="inp" [(ngModel)]="helperProviderId">
+              <option value="">— standalone —</option>
+              @for (p of providers(); track p.id) { <option [value]="p.id">{{ p.name }}</option> }
+            </select>
+          </div>
+          <div class="field">
+            <label>Base URL</label>
+            <input class="inp" [(ngModel)]="helperBaseUrl" placeholder="https://api.openai.com/v1" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label>API key</label>
+            <input class="inp" [(ngModel)]="helperKey" type="password" placeholder="sk-…" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label>Model <button class="link" (click)="openPicker('helper')">pick / autocomplete</button></label>
+            <input class="inp" [(ngModel)]="helperModel" placeholder="gpt-4o-mini" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label>Reasoning effort</label>
+            <label>Concurrent requests</label>
+            <input class="inp" [(ngModel)]="helperConcurrency" type="number" min="1" max="32" />
+            <select class="inp" [(ngModel)]="helperEffort">
+              <option value="">none</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="xhigh">xhigh</option>
+              <option value="max">max</option>
+            </select>
+          </div>
+          <div class="actions">
+            <button class="btn primary" (click)="saveHelper()">Save helper</button>
+            @if (helperEdit) { <button class="btn" (click)="helperEdit = false">Cancel</button> }
+          </div>
+          <div class="hint muted">The helper is classified separately from the test model. Used for output classification (prose/chat/json/code/math/…).</div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ============ STATS & DISPLAY ============ -->
+  @if (activeTab === 'stats') {
+    <div class="card">
+      <h3>Stats &amp; display</h3>
+      <div class="field">
+        <label>Max tokens for stats</label>
+        <input class="inp" type="number" min="100" step="100" [value]="settings().max_stats_tokens" (change)="setMaxStatsTokens($any($event.target).value)" />
+        <div class="hint muted">Live stats keep this many tokens of history. Older token timings are truncated from memory so the aggregate calculations stay fast.</div>
+      </div>
+      <div class="field">
+        <label>Intra-token latency split cap (ms)</label>
+        <input class="inp" type="number" min="1" step="0.5" [value]="settings().intra_token_latency_split_cap_ms" (change)="setSplitCap($any($event.target).value)" />
+        <div class="hint muted">Upper limit for the bimodal split that separates speculative-accepted tokens from freshly generated ones (default 11 ms — one decode pass). The detected split may sit lower, never higher, so slow providers can't redefine "accepted" to mean "below their own jitter". Applies to the acceptance curve, speculation depth and cluster stats.</div>
+      </div>
+      <div class="field">
+        <label>Max points in graphs</label>
+        <input class="inp" type="number" min="100" step="100" [value]="settings().max_graph_points" (change)="setMaxGraphPoints($any($event.target).value)" />
+        <button class="btn danger" (click)="wipeData()" title="Wipe benchmarks, sessions and settings; test definitions are kept">Reset database…</button>
+        <div class="hint muted">Point cap for the live acceptance and decode-speed graphs. Beyond this the graphs slide: the oldest points drop off the left. Default 10000.</div>
+      </div>
+    </div>
+  }
+
+  <!-- ============ TELEMETRY ============ -->
+  @if (activeTab === 'telemetry') {
+    <div class="card">
+      <h3>Telemetry receiver <span class="tag" [class.on]="settings().telemetry.enabled">{{ settings().telemetry.enabled ? 'ON' : 'OFF' }}</span></h3>
+      <div class="hint muted" style="margin-bottom:12px">
+        A mini OpenTelemetry receiver (OTLP over HTTP-JSON) for generation
+        telemetry streamed directly from an inference engine. Live view only —
+        nothing is recorded unless you press record on a stream panel.
+        Endpoints: <span class="mono">POST /v1/logs</span>, <span class="mono">POST /v1/metrics</span>.
+      </div>
+      <div class="field">
+        <label class="chk">
+          <input type="checkbox" [checked]="settings().telemetry.enabled" (change)="setTelemetry('enabled', $any($event.target).checked)" />
+          Enable telemetry receiver
+        </label>
+      </div>
+      <div class="field">
+        <label>Listen host</label>
+        <input class="inp" [value]="settings().telemetry.host" (change)="setTelemetry('host', $any($event.target).value)" />
+        <div class="hint muted">Default 0.0.0.0 (all interfaces).</div>
+      </div>
+      <div class="field">
+        <label>Listen port</label>
+        <input class="inp" type="number" min="1" max="65535" [value]="settings().telemetry.port" (change)="setTelemetry('port', parseInt($any($event.target).value, 10))" />
+        <div class="hint muted">Default 9381. Changing this restarts the receiver immediately.</div>
+      </div>
+      <div class="field">
+        <label>Max streams shown</label>
+        <input class="inp" type="number" min="1" max="8" [value]="settings().telemetry.max_streams" (change)="setTelemetry('max_streams', parseInt($any($event.target).value, 10))" />
+        <div class="hint muted">Distinct streams (request.id panels) displayed at once — 1 to 8, default 4.</div>
+      </div>
+      <div class="field">
+        <label>Stream stats budget (tokens)</label>
+        <input class="inp" type="number" min="1000" max="1000000" step="1000" [value]="settings().telemetry.stats_max_tokens" (change)="setTelemetry('stats_max_tokens', parseInt($any($event.target).value, 10))" />
+        <div class="hint muted">Telemetry streams may run forever, so the data behind the charts (decode timeline, distributions, acceptance) slides once a stream exceeds this many tokens — oldest points drop. This is its own threshold, independent of the chat live-stats budget above. Default 20000.</div>
+      </div>
+      <div class="field">
+        <label>Mini-chat window (lines)</label>
+        <input class="inp" type="number" min="3" max="2000" [value]="settings().telemetry.chat_lines" (change)="setTelemetry('chat_lines', parseInt($any($event.target).value, 10))" />
+        <div class="hint muted">Sliding window of incoming text per stream panel (default 200 lines).</div>
+      </div>
+      <div class="field">
+        <label>Recording time cap (seconds)</label>
+        <input class="inp" type="number" min="5" max="300" [value]="settings().telemetry.record_max_secs" (change)="setTelemetry('record_max_secs', parseInt($any($event.target).value, 10))" />
+        <div class="hint muted">A recording stops itself after this many seconds (hard cap 300 = 5 minutes) — whichever of time or tokens comes first.</div>
+      </div>
+      <div class="field">
+        <label>Recording token cap</label>
+        <input class="inp" type="number" min="500" max="20000" step="500" [value]="settings().telemetry.record_max_tokens" (change)="setTelemetry('record_max_tokens', parseInt($any($event.target).value, 10))" />
+        <div class="hint muted">Recording also stops at this many generated tokens (hard cap 20K). Recorded streams are saved as sessions of type “telemetry” and work in reports and compare like any other session.</div>
+      </div>
+    </div>
+  }
+
+  <!-- ============ MODEL PICKER MODAL ============ -->
+  @if (pickerOpen) {
+    <div class="modal" (click)="pickerOpen = false">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <h3>Choose model — {{ pickerTarget === 'helper' ? 'helper model' : 'test model' }}</h3>
+        @if (pickerTarget === 'model') {
+          <app-model-picker [base_url]="modelEditor ? (ssCurrentBaseUrl()) : form.base_url" [api_key]="form.api_key" [model]="modelEditor ? modelForm.id : (form.model || '')" (selected)="onModelPicked($event)" (confirmed)="closePicker()"></app-model-picker>
+        } @else {
+          <app-model-picker [base_url]="helperPickBaseUrl()" [api_key]="helperPickApiKey()" [model]="helperModel" (selected)="onHelperPicked($event)" (confirmed)="closePicker()"></app-model-picker>
+        }
+        <div class="actions">
+          <button class="btn" (click)="pickerOpen = false">Done</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (toastMsg) { <div class="toast">{{ toastMsg }}</div> }
+</section>

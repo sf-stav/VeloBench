@@ -1,0 +1,126 @@
+<div class="tel">
+  <div class="head">
+    <h2>Telemetry</h2>
+    <span class="muted small">live view of streams received from inference engines — nothing is recorded unless you press record</span>
+    <span class="spacer"></span>
+    <button class="btn" (click)="toggleSim()" [disabled]="simBusy() || !cfg()?.enabled" title="Emit synthetic batched OTLP logs to prove the pipeline">Simulate streams</button>
+    <button class="btn" (click)="clearPanels()" title="Drop all open stream panels (they reappear when new messages arrive)">Clear</button>
+  </div>
+
+  @if (!cfg()?.enabled) {
+    <div class="card off muted">
+      The telemetry receiver is <b>OFF</b>. Enable it in Settings → Telemetry
+      (default listen address 0.0.0.0:9381). Engines POST OTLP/HTTP-JSON to
+      <span class="mono">/v1/logs</span> and <span class="mono">/v1/metrics</span>.
+    </div>
+  } @else {
+    <div class="statusline card">
+      @if (statusLine(); as st) {
+        <span class="live-dot on"></span>
+        <span>currently running:</span>
+        <span class="mono strong">{{ st.model }}</span>
+        <span class="muted">&#64;</span>
+        <span class="mono chip">{{ st.topology }}</span>
+      } @else {
+        <span class="live-dot"></span>
+        <span class="muted">waiting for a <span class="mono">status</span> record (currently running: model &#64; topology)…</span>
+      }
+      <span class="spacer"></span>
+      @if (clientConnected()) {
+        <span class="chip conn">client connected</span>
+      } @else {
+        <span class="chip">no client</span>
+      }
+    </div>
+  }
+
+  @if (error()) {
+    <div class="card err small">{{ error() }}</div>
+  }
+
+  <div class="panels">
+    @for (s of panels(); track s.requestId) {
+      <div class="panel card" [class.done]="s.done">
+        <div class="phead">
+          <span class="dot" [class.on]="!s.done"></span>
+          <span class="mono small strong">{{ s.model || '—' }}</span>
+          <span class="muted">&#64;</span>
+          <span class="chip">{{ s.topology || '—' }}</span>
+          @if (s.done) {
+            <span class="chip">done{{ s.finishReason ? ' · ' + s.finishReason : '' }}</span>
+          }
+          <span class="spacer"></span>
+          <button class="btn rec" [class.on]="s.recording" (click)="record(s)" title="Record this stream as a telemetry session">
+            {{ s.recording ? '■ Stop' : '● Record' }}
+          </button>
+        </div>
+
+        @if (s.recording; as r) {
+          <div class="recbar small mono">
+            <span class="red">● REC</span>
+            {{ r.elapsedS.toFixed(0) }}s / {{ r.maxS }}s ·
+            {{ r.tokens.toFixed(0) }} / {{ r.maxTokens }} tok
+            <span class="bar"><span class="fill" [style.width.%]="recProgress(s) * 100"></span></span>
+          </div>
+        }
+
+        <div class="cols">
+          <pre class="chat mono">{{ s.text || '…' }}</pre>
+          <div class="deck">
+            <div class="deck-group">
+              <div class="eyebrow">Current decode rate</div>
+              <div class="big"><span class="num">{{ s.stats.tokS.toFixed(1) }}</span><span class="unit">tok/s</span></div>
+              <div class="drow mono"><span class="k">median</span><span class="v">{{ s.stats.median.toFixed(1) }}</span></div>
+              <div class="drow mono"><span class="k">range</span><span class="v">{{ s.stats.min.toFixed(1) }}–{{ s.stats.max.toFixed(1) }}</span></div>
+              <div class="drow mono"><span class="k">stability</span><span class="v">{{ stabilityPct(s) }}</span></div>
+            </div>
+            <div class="deck-group">
+              <div class="eyebrow">Responsiveness</div>
+              <div class="big"><span class="num">{{ fmtMs(s.stats.ttftMs) }}</span></div>
+              <div class="dsub mono muted">TTFT@if (itlP90(s); as p) { · ITL p90 {{ p.toFixed(1) }}ms }</div>
+            </div>
+            <div class="deck-group">
+              <div class="eyebrow">Progress</div>
+              <div class="big"><span class="num">{{ s.stats.tokens.toFixed(0) }}</span><span class="unit">tok</span></div>
+              <div class="dsub mono muted">{{ s.stats.tokens.toFixed(0) }} tok · {{ fmtDur(s.stats.genMs) }} elapsed</div>
+            </div>
+            <div class="dsub mono muted tokline">
+              reasoning {{ s.stats.reasoningTokens.toFixed(0) }} · output {{ s.stats.contentTokens.toFixed(0) }} · avg {{ s.stats.avg.toFixed(1) }} tok/s
+            </div>
+          </div>
+        </div>
+
+        <div class="chart-hero">
+          <div class="chart-head"><h4>Decode rate timeline</h4><span class="chart-unit muted small">tok/s · n={{ s.samples.length }} · 3 s rolling window</span></div>
+          <canvas [attr.id]="'tl-' + s.requestId" style="width:100%;height:110px;display:block"></canvas>
+        </div>
+
+        <div class="charts2">
+          <div class="chart-card">
+            <div class="chart-head"><h4>Decode-rate distribution</h4><span class="chart-unit muted small">tok/s</span></div>
+            <canvas [attr.id]="'rh-' + s.requestId" style="width:100%;height:96px;display:block"></canvas>
+          </div>
+          <div class="chart-card">
+            <div class="chart-head"><h4>Inter-token latency distribution</h4><span class="chart-unit muted small">ms</span></div>
+            <canvas [attr.id]="'lh-' + s.requestId" style="width:100%;height:96px;display:block"></canvas>
+          </div>
+          <div class="chart-card">
+            <div class="chart-head"><h4>Acceptance rate estimate</h4><span class="pill est">ESTIMATE</span><span class="chart-unit muted small">α̂ · %</span></div>
+            <canvas [attr.id]="'ac-' + s.requestId" style="width:100%;height:96px;display:block"></canvas>
+          </div>
+          <div class="chart-card">
+            <div class="chart-head"><h4>Speculation depth distribution</h4><span class="pill est">ESTIMATE</span><span class="chart-unit muted small">runs</span></div>
+            <canvas [attr.id]="'sd-' + s.requestId" style="width:100%;height:96px;display:block"></canvas>
+          </div>
+        </div>
+      </div>
+    } @empty {
+      @if (cfg()?.enabled) {
+        <div class="card empty muted">
+          No live streams. Point the engine at <span class="mono">POST http://&lt;host&gt;:{{ cfg()?.port }}/v1/logs</span>
+          or press “Simulate streams”.
+        </div>
+      }
+    }
+  </div>
+</div>

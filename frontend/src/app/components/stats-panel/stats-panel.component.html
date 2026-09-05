@@ -1,0 +1,119 @@
+<div class="panel" [class.capturing]="capturing()">
+  <div class="panel-head">
+    <div>
+      <div class="brand-line"><img src="/favicon-96x96.png" alt="VeloBenchmark logo" /><span>VeloBenchmark</span></div>
+      <div class="title-row">
+        <div class="title">{{ scope === 'chat' ? 'Live run' : 'Live stats' }}</div>
+        <span class="state-chip" [class.running]="runState() === 'RUNNING'" [class.idle]="runState() === 'IDLE'">
+          <span class="sdot"></span>{{ runState() }}
+        </span>
+        @if (category(); as cat) {
+          <span class="regime-chip" [style.background]="catChip(cat)" [style.color]="catColor(cat)">{{ regimeLabelOf(cat) }}</span>
+        }
+      </div>
+      <div class="sub muted mono test-label">{{ modelInfo() }}</div>
+      <div class="sub muted mono test-date">{{ nowStr() }}</div>
+    </div>
+    <div class="head-actions">
+      @if (scope === 'stats') {
+        <button class="btn" (click)="refresh()" title="Reload session history">↻</button>
+      }
+      <button class="btn" (click)="exportPNG()">PNG</button>
+      <button class="btn" (click)="exportPDF()">PDF</button>
+    </div>
+  </div>
+
+  <!-- §10 live metric deck: double-height speed hero / responsiveness+progress stacked -->
+  <div class="deck-live">
+    <div class="dl-hero">
+      <div class="eyebrow">
+        {{ runState() === 'COMPLETE' ? 'Final decode rate' : 'Current decode rate' }}
+        <span class="tag-mini">{{ runState() === 'COMPLETE' ? 'FINAL' : 'CURRENT' }}</span>
+      </div>
+      <div class="big"><span class="num">{{ live().tok_s.toFixed(1) }}</span><span class="unit">tok/s</span></div>
+      <div class="dl-stack">
+        <div class="dl-row"><span class="dl-k">median</span><span class="dl-v mono">{{ live().median.toFixed(1) }}</span></div>
+        <div class="dl-row"><span class="dl-k">range</span><span class="dl-v mono">{{ live().min.toFixed(1) }}–{{ live().max.toFixed(1) }}</span></div>
+        <div class="dl-row"><span class="dl-k">stability</span><span class="dl-v mono">{{ stabilityPct() }}</span></div>
+      </div>
+    </div>
+    <div class="dl-col">
+      <div class="dl-side">
+        <div class="eyebrow">Responsiveness</div>
+        <div class="big"><span class="num">{{ fmtMs(live().ttft_ms) }}</span></div>
+        <div class="dl-sub muted mono">TTFT@if (itlP90(); as p) { · ITL p90 {{ p.toFixed(1) }}ms }</div>
+      </div>
+      <div class="dl-side">
+        <div class="eyebrow">Progress</div>
+        <div class="big"><span class="num">{{ live().tokens.toFixed(0) }}</span><span class="unit">tok</span></div>
+        <div class="dl-sub muted mono">{{ live().tokens.toFixed(0) }} tok/resp · {{ fmtDur(live().gen_ms) }} elapsed</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- §10 live charts: full-width hero timeline first -->
+  <div class="chart-card">
+    <div class="chart-head">
+      <h4>Decode rate timeline</h4>
+      <span class="chart-unit">tok/s · n={{ visibleSamples().length }} · 3 s rolling window</span>
+    </div>
+    <canvas id="decodeChart" style="width:100%;height:110px;display:block"></canvas>
+    <div class="legend muted">median (dashed blue) · min/max (grey) · background tint = active regime · stable axis during a run</div>
+  </div>
+
+  <!-- measurement charts, 2-up -->
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="chart-head"><h4>Decode-rate distribution</h4><span class="chart-unit">tok/s · n={{ rateCount() }}</span></div>
+      <canvas id="histChart" style="width:100%;height:100px;display:block"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-head"><h4>Inter-token latency distribution</h4><span class="chart-unit">ms · n={{ engine.aggLatencies().length }}</span></div>
+      <canvas id="latencyChart" style="width:100%;height:100px;display:block"></canvas>
+      <div class="legend muted">{{ latencyLabel() }}</div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-head"><h4>Acceptance rate estimate</h4><span class="pill est">ESTIMATE</span><span class="chart-unit">α̂ · % · n={{ engine.aggAcceptance().length }}</span></div>
+      <canvas id="acceptanceChart" style="width:100%;height:100px;display:block"></canvas>
+      <div class="legend muted">% low-latency (speculative) items vs time · moving average</div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-head"><h4>Speculation depth distribution</h4><span class="pill est">ESTIMATE</span><span class="chart-unit">runs · accepted length proxy</span></div>
+      <canvas id="specDepthChart" style="width:100%;height:100px;display:block"></canvas>
+      <div class="legend muted">runs of 2, 3, 4, … speculative tokens</div>
+    </div>
+  </div>
+
+  <!-- regime split -->
+  @if (regimes().length) {
+    <div class="chart-card">
+      <div class="chart-head"><h4>Decode rate · per regime</h4></div>
+      <div class="regimes">
+        @for (r of regimes(); track r.category) {
+          <div class="regime">
+            <div class="reg-head">
+              <span class="sw" [style.background]="catColor(r.category)"></span>
+              <span class="reg-name">{{ regimeLabelOf(r.category) }}</span>
+              <span class="muted mono reg-meta">{{ r.avg_tok_s.toFixed(1) }} tok/s · {{ r.token_count.toFixed(0) }} tok</span>
+            </div>
+            <canvas [attr.data-reg]="r.category" style="width:100%;height:90px;display:block"></canvas>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- prefill bars (side by side, analytics scope only) -->
+  @if (scope === 'stats') {
+    <div class="bars-row">
+      <div class="chart-card">
+        <div class="chart-head"><h4>First-token latency by request</h4><span class="chart-unit">s · n={{ prefill().length }}</span></div>
+        <canvas id="ttftChart" style="width:100%;height:140px;display:block"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-head"><h4>Tokens per request</h4><span class="chart-unit">tok · n={{ tokensPerReq().length }}</span></div>
+        <canvas id="tokensChart" style="width:100%;height:140px;display:block"></canvas>
+      </div>
+    </div>
+  }
+</div>

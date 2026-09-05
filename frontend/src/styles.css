@@ -1,0 +1,83 @@
+@import 'highlight.js/styles/github-dark.css';
+
+:root {
+  --bg: #0b0f17;
+  --panel: #0d1320;
+  --card: #131a2a;
+  --border: #1f2937;
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --accent: #4f8cff;
+  --accent2: #22d3ee;
+  --green: #2ecc71;
+  --orange: #ff9f43;
+  --red: #ef4444;
+  --amber: #fbbf24;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #26303f; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+button, input, textarea, select {
+  font-family: inherit;
+}
+
+.btn {
+  background: #1a2436;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 13px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .14s, border-color .14s;
+}
+.btn:hover { background: #24324a; }
+.btn.primary {
+  background: linear-gradient(135deg, #2563eb, #4f8cff);
+  border: none;
+  color: #fff;
+  font-weight: 600;
+}
+.btn.primary:hover { filter: brightness(1.12); }
+.btn.danger { background: #3b1d24; border-color: #6b2a35; color: #fca5a5; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.inp {
+  background: #0d1320;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  padding: 8px 11px;
+  font-size: 13px;
+  outline: none;
+  width: 100%;
+}
+.inp:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,140,255,.14); }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.num { font-variant-numeric: tabular-nums; }
+
+@media (max-width: 860px) {
+  .sidebar { width: 64px; }
+  .sidebar .label, .sidebar .logo span, .topbar .provider { display: none; }
+}

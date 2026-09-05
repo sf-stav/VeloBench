@@ -1,0 +1,1093 @@
+<section class="analytics" #page [class.capturing]="capturing()">
+  @let d = detail();
+  @if (d) {
+    <!-- Secondary header: every control (buttons, switches, selectors) lives
+         here, NEVER in the report body below. Excluded from captures. -->
+    <div class="report-controls" [class.ghost]="capturing()">
+      <div class="rc-group">
+        <button class="btn" (click)="close()">← Back</button>
+        <div class="tabs">
+          <button class="tab" [class.active]="tab() === 'compact'" (click)="setTab('compact')">Compact</button>
+          <button class="tab" [class.active]="tab() === 'analytics'" (click)="setTab('analytics')">Analytics</button>
+          <button class="tab" [class.active]="tab() === 'transcript'" (click)="setTab('transcript')">Transcript</button>
+        </div>
+      </div>
+      @if (sectionMode() && !conc()) {
+        <div class="rc-group">
+          <span class="rc-label">section</span>
+          <button class="chip" [class.active]="sectionFilter() === null" (click)="sectionFilter.set(null)">All</button>
+          @for (sec of sectionNames(); track sec) {
+            <button class="chip" [class.active]="sectionFilter() === sec" (click)="sectionFilter.set(sec)">{{ sec }}</button>
+          }
+        </div>
+      }
+      @if (tab() === 'analytics' && !conc()) {
+        <div class="rc-group">
+          <span class="rc-label">bin scope</span>
+          @for (sc of scopes; track sc) {
+            <button class="chip" [class.active]="scope() === sc" (click)="setScope(sc)">{{ scopeLabel(sc) }}</button>
+          }
+        </div>
+      }
+      <div class="rc-group">
+        <button class="btn sm" (click)="renameSession()" title="Rename this session">✎ Rename</button>
+        <select class="cat-select inp" [value]="sessionCat()" (change)="setSessionCat($event)" title="Assign a managed category">
+          <option value="">category…</option>
+          @for (c of ss.settings().session_categories; track c) {
+            <option [value]="c" [selected]="sessionCat() === c">{{ c }}</option>
+          }
+        </select>
+      </div>
+      <div class="rc-group rc-right">
+        <button class="btn" (click)="exportPNG()" title="Export the whole analytics page as a PNG">PNG</button>
+        <button class="btn" (click)="exportPDF()" title="Export the whole analytics page as a PDF">PDF</button>
+      </div>
+    </div>
+
+    <!-- §3.1 run header -->
+    <header class="run-header">
+      <div class="identity">
+        <div class="brand-line"><img src="/favicon-96x96.png" alt="VeloBenchmark logo" /><span>VeloBenchmark</span></div>
+        <div class="page-title-row">
+          <h2>Session analytics</h2>
+          @if (d.category) {
+            <span class="tag" [style.background]="color(d.category) + '22'" [style.color]="color(d.category)">{{ regimeLabel(d.category) }}</span>
+          }
+        </div>
+        <div class="session-name-line">
+          <span class="session-name" [title]="sessionName() ? 'session ' + d.session : ''">{{ sessionName() || 'Session ' + d.session.slice(0, 8) }}</span>
+          @if (sessionCat()) {
+            <span class="badge cat" title="Managed category">{{ sessionCat() }}</span>
+          }
+        </div>
+        <div class="model-line mono">{{ header().model }}@if (header().moreModels) { <span class="muted"> +{{ header().moreModels }}</span> }</div>
+        <div class="chip-row">
+          @for (c of header().chips; track c) {
+            <span class="meta-chip mono">{{ c }}</span>
+          }
+        </div>
+      </div>
+      <div class="run-meta">
+        <span class="status-chip" [class.running]="header().running" [class.failed]="header().failed">{{ header().status }}</span>
+        <div class="meta-line"><span class="k">Local time</span><span class="v mono">{{ header().timestamp }}</span></div>
+        <div class="meta-line"><span class="k">Duration</span><span class="v mono">{{ header().duration }}</span></div>
+        <div class="meta-line"><span class="k">Turns</span><span class="v mono">{{ header().turns }}</span></div>
+
+      </div>
+    </header>
+
+    <!-- §3.2 VeloStrip: regime composition ribbon -->
+    @if (veloStrip().segs.length) {
+      <div class="velostrip">
+        <div class="strip">
+          @for (s of veloStrip().segs; track $index) {
+            <div class="seg" [style.width.%]="veloStrip().total ? (s.tokens / veloStrip().total) * 100 : 0"
+                 [style.background]="color(s.regime)" [title]="regimeLabel(s.regime)"></div>
+          }
+        </div>
+        <div class="strip-legend">
+          @for (l of veloStrip().legend; track l.regime) {
+            <span class="key">
+              <span class="dot" [style.background]="l.color"></span>
+              <span class="lab">{{ l.label }}</span>
+              <span class="mono val">{{ l.tokShare.toFixed(1) }}% · {{ fmtInt(l.tokens) }} tok</span>
+            </span>
+          }
+        </div>
+      </div>
+    }
+
+    @if (d.status === 'running') {
+      <div class="progress card">
+        <div class="bar" [style.width.%]="pct(d)"></div>
+        <span class="muted small">{{ d.chunks_done }}/{{ d.chunks_total }} chunks</span>
+      </div>
+    }
+
+    @if (tab() === 'compact') {
+      <!-- one-page summary: key metrics + per-turn table + regime mix -->
+      <div class="perf perf-compact">
+        @if (conc(); as cc) {
+          <div class="conc-banner">
+            <div class="conc-main">
+              <span class="conc-bolt">⚡</span>
+              <span class="conc-agg num">{{ cc.agg == null ? '—' : fmt1n(cc.agg) }}</span>
+              <span class="conc-unit">tok/s aggregate · Σ sustained worker streams</span>
+            </div>
+            <div class="conc-side num">
+              <span><b>{{ cc.workers }}</b> workers</span>
+              <span title="Total tokens ÷ longest worker — includes ramp-in (TTFT) and staggered finishes, so it sits below the sustained rate on short runs.">end-to-end Σ÷wall <b>{{ cc.wallAgg == null ? '—' : fmt1n(cc.wallAgg) }}</b> tok/s</span>
+              <span>mean worker <b>{{ cc.meanWorker == null ? '—' : fmt1n(cc.meanWorker) }}</b> tok/s</span>
+              <span>Σ <b>{{ fmtInt(cc.totalTokens) }}</b> tok in <b>{{ fmtDur(cc.wallMs) }}</b></span>
+              <span>avg TTFT <b>{{ cc.ttftAvg == null ? '—' : fmtMs(cc.ttftAvg) }}</b></span>
+              <span>avg prefill <b>{{ cc.prefillAvg == null ? '—' : '≈ ' + fmt1n(cc.prefillAvg) }}</b> tok/s</span>
+            </div>
+          </div>
+        }
+        <div class="perf-chips num">
+          <span class="perf-chip">⏱ Runtime <b>{{ deck().genMs ? fmtDur(deck().genMs) : '—' }}</b></span>
+          <span class="perf-chip">🔁 Turns <b>{{ deck().turns }}</b></span>
+          <span class="perf-chip">📦 Total tokens <b>{{ fmtInt(deck().totalTokens) }}</b></span>
+          <span class="perf-chip">⚡ Avg overall rate <b>{{ perf().overallRate == null ? '—' : '≈ ' + fmt1n(perf().overallRate) + ' tok/s' }}</b></span>
+        </div>
+        <div class="perf-grid perf-g5 perf-g5compact">
+          <div class="perf-card">
+            <div class="perf-accent indigo"></div>
+            <span class="perf-pill" [class]="'perf-pill ' + perfPillStability().cls">{{ perfPillStability().label }}</span>
+            <div class="perf-label">Decode rate</div>
+            <div class="perf-value num">{{ fmt1n(headline().medRate) }}<small>tok/s</small></div>
+            <div class="perf-sub num">3s window · n = {{ fmtInt(headline().n) }}</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-accent green"></div>
+            <span class="perf-pill" [class]="'perf-pill ' + perfPillTtft().cls">{{ perfPillTtft().label }}</span>
+            <div class="perf-label">First token</div>
+            <div class="perf-value num">{{ headline().ttftP50 == null ? '—' : fmtS(headline().ttftP50) }}</div>
+            <div class="perf-sub num">P95 {{ fmtMs(deck().ttftP95) }} · P99 {{ fmtMs(deck().ttftP99) }}</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-accent amber"></div>
+            <div class="perf-label">ITL P90</div>
+            <div class="perf-value num">{{ fmtMsPrec(deck().itlP90) }}</div>
+            <div class="perf-sub num">P50 {{ fmtMsPrec(deck().itlP50) }} · P99 {{ fmtMsPrec(deck().itlP99) }}</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-accent violet"></div>
+            <div class="perf-label">Output volume {{ deck().avgMode ? '(avg/worker)' : '' }}</div>
+            <div class="perf-value num">{{ fmtInt(deck().outputTokens) }}<small>tok</small></div>
+            <div class="perf-sub num">@if (deck().avgMode) {Σ {{ fmtInt(deck().outputTotal) }} · }reasoning {{ fmtInt(deck().reasoningTokens) }} · {{ fmtPct(deck().reasoningShare, 0) }}</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-accent green"></div>
+            <div class="perf-label">Stability</div>
+            <div class="perf-donutcard">
+              <svg class="perf-donut" width="56" height="56" viewBox="0 0 64 64">
+                <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="7"/>
+                <circle cx="32" cy="32" r="26" fill="none" stroke="#4ade80" stroke-width="7" stroke-linecap="round"
+                  [attr.stroke-dasharray]="perf().donut(headline().stability) + ' 163.4'" transform="rotate(-90 32 32)"/>
+                <text x="32" y="37" text-anchor="middle" fill="#e8ecf4" font-size="15" class="num">{{ fmtPct(headline().stability) }}</text>
+              </svg>
+              <div class="perf-sub" style="margin:0">sustained vs<br>peak rate</div>
+            </div>
+          </div>
+        </div>
+        <div class="perf-statrow perf-statrow5 num">
+          <div class="perf-stat"><div class="perf-k">Total tokens</div><div class="perf-v">{{ fmtInt(deck().totalTokens) }}</div></div>
+          <div class="perf-stat"><div class="perf-k">Tokens / request {{ deck().avgMode ? '(avg)' : '(P50)' }}</div><div class="perf-v">{{ fmtInt(deck().tokMed) }}</div></div>
+          <div class="perf-stat"><div class="perf-k">TPOT {{ deck().avgMode ? '(avg)' : '(P50)' }}</div><div class="perf-v">{{ fmtMsPrec(deck().tpot) }}</div></div>
+          <div class="perf-stat"><div class="perf-k">Prefill tok/s</div><div class="perf-v">{{ deck().prefill == null ? '—' : '≈ ' + fmt1n(deck().prefill) }}</div></div>
+          <div class="perf-stat"><div class="perf-k">Volatility (MAD/med)</div><div class="perf-v">{{ fmtPct(deck().volatility, 1) }}</div></div>
+        </div>
+      </div>
+
+      @if (turnRows().length > 1) {
+@if (conc()) {
+            @for (g of turnGroups(); track g.name) {
+              <div class="card turntable-card">
+                <div class="chart-head"><h4>{{ g.name }}</h4><span class="chart-unit">barrier step · {{ g.rows.length }} worker turn(s) · Σ / avg = step total</span></div>
+                <table class="ttable">
+                  <thead><tr><th>Worker</th><th class="num">Input tok</th><th>Output tok</th><th>Total tok</th><th>TTFT</th><th>Prefill tok/s</th><th class="num">Med tok/s</th><th class="num">Med tok/s (aggr.)</th><th class="num">Min</th><th class="num">Max</th><th class="num">α̂ avg</th><th class="num">Depth avg</th></tr></thead>
+                  <tbody>
+                    @if (g.agg; as ga) {
+                      <tr class="agg-row">
+                        <td class="mono">Σ / avg</td>
+                        <td class="mono">{{ fmtInt(ga.input) }}</td>
+                        <td class="mono">{{ fmtInt(ga.out) }}</td>
+                        <td class="mono">{{ fmtInt(ga.input + ga.out) }}</td>
+                        <td class="mono">{{ ga.ttft == null ? '—' : fmtMs(ga.ttft) }}</td>
+                        <td class="mono">{{ ga.prefill == null ? '—' : fmt1n(ga.prefill) }}</td>
+                        <td class="mono">{{ ga.med == null ? '—' : fmt1n(ga.med) }}</td>
+                        <td class="mono strong">{{ ga.medSum == null ? '—' : fmt1n(ga.medSum) }}</td>
+                        <td class="mono">{{ ga.min == null ? '—' : fmt1n(ga.min) }}</td>
+                        <td class="mono">{{ ga.max == null ? '—' : fmt1n(ga.max) }}</td>
+                        <td class="mono">{{ ga.acc == null ? '—' : fmtPct(ga.acc, 0) }}</td>
+                        <td class="mono">{{ ga.depth == null ? '—' : ga.depth.toFixed(1) }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          } @else {
+        <div class="card turntable-card">
+          <div class="chart-head"><h4>Per-turn timings</h4><span class="chart-unit">sent = tokens the model received for that turn (incl. conversation history)</span></div>
+          <table class="ttable">
+            <thead><tr><th>Turn</th>@if (sectionMode()) {<th>Section</th>}<th class="num">Input tok</th><th>Output tok</th><th>Total tok</th><th>TTFT</th><th>Prefill tok/s</th><th class="num">Med tok/s</th><th class="num">Min</th><th class="num">Max</th><th class="num">α̂ avg</th><th class="num">Depth avg</th></tr></thead>
+            <tbody>
+              @for (r of turnRows(); track r.n) {
+                <tr>
+                  <td class="mono">{{ r.name }}</td>
+                  @if (sectionMode()) {
+                    <td class="mono muted">{{ r.section ?? '—' }}</td>
+                  }
+                  <td class="mono">{{ r.input == null ? '—' : fmtInt(r.input) }}</td>
+                  <td class="mono">{{ r.out == null ? '—' : fmtInt(r.out) }}</td>
+                  <td class="mono">{{ r.total == null ? '—' : fmtInt(r.total) }}</td>
+                  <td class="mono">{{ r.ttft == null ? '—' : fmtMs(r.ttft) }}</td>
+                  <td class="mono">{{ r.prefill == null ? '—' : fmt1n(r.prefill) }}</td>
+                  <td class="mono">{{ r.med == null ? '—' : fmt1n(r.med) }}</td>
+                  <td class="mono">{{ r.min == null ? '—' : fmt1n(r.min) }}</td>
+                  <td class="mono">{{ r.max == null ? '—' : fmt1n(r.max) }}</td>
+                  <td class="mono">{{ r.acc == null ? '—' : fmtPct(r.acc, 0) }}</td>
+                  <td class="mono">{{ r.depth == null ? '—' : r.depth.toFixed(1) }}</td>
+                </tr>
+              }
+              @if (conc(); as cc6) {
+                <tr class="agg-row">
+                  <td class="mono">Σ / avg</td>
+                  @if (sectionMode()) {
+                    <td class="mono muted">all workers</td>
+                  }
+                  <td class="mono">{{ fmtInt(concTurnAgg()?.input ?? 0) }}</td>
+                  <td class="mono">{{ fmtInt(cc6.totalTokens) }}</td>
+                  <td class="mono">{{ fmtInt((concTurnAgg()?.input ?? 0) + cc6.totalTokens) }}</td>
+                  <td class="mono">{{ cc6.ttftAvg == null ? '—' : fmtMs(cc6.ttftAvg) }}</td>
+                  <td class="mono">{{ cc6.prefillAvg == null ? '—' : fmt1n(cc6.prefillAvg) }}</td>
+                  <td class="mono">{{ concTurnAgg()?.med == null ? '—' : fmt1n(concTurnAgg()!.med!) }}</td>
+                  <td class="mono">{{ concTurnAgg()?.min == null ? '—' : fmt1n(concTurnAgg()!.min!) }}</td>
+                  <td class="mono">{{ concTurnAgg()?.max == null ? '—' : fmt1n(concTurnAgg()!.max!) }}</td>
+                  <td class="mono">{{ concTurnAgg()?.acc == null ? '—' : fmtPct(concTurnAgg()!.acc!, 0) }}</td>
+                  <td class="mono">{{ concTurnAgg()?.depth == null ? '—' : concTurnAgg()!.depth!.toFixed(1) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+          }
+      } @else {
+        <div class="muted small card singleturn-note">Single-turn session — per-turn comparison not applicable.</div>
+      }
+
+      <!-- general charts, always computed on ALL tokens (scope pinned to 'all') -->
+      @if (conc(); as ccT) {
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h4>Decode rate timeline — workers + Σ</h4>
+            <span class="chart-unit">tok/s · shared t=0 · Σ median {{ ccT.sumMed == null ? '—' : fmt1n(ccT.sumMed) }} · min {{ ccT.sumMin == null ? '—' : fmt1n(ccT.sumMin) }} · max {{ ccT.sumMax == null ? '—' : fmt1n(ccT.sumMax) }}</span>
+          </div>
+          <canvas #cvConc id="cvConc" class="chart hero-chart"></canvas>
+          <div class="legend-row">
+            <span class="key"><span class="dot" style="background:#e8ecf4"></span><b>Σ of workers (200 ms bins)</b></span>
+            <span class="key muted">— — Σ median {{ ccT.sumMed == null ? '—' : fmt1n(ccT.sumMed) }} tok/s</span>
+            <span class="key muted">thin colored lines = individual workers</span>
+          </div>
+          <div class="muted small">Every worker drawn over the same timeframe (all started together); the Σ series sums all workers' tokens per 200 ms bin. Median, min and max of the Σ line are the report's headline numbers.</div>
+        </div>
+      } @else {
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h4>Decode rate timeline</h4>
+            <span class="chart-unit">tok/s · n={{ fmtInt(deck().n) }} · 3 s rolling window</span>
+          </div>
+          <canvas #cvRate id="cvRate" class="chart hero-chart"></canvas>
+          <canvas #cvAcceptStrip class="chart accept-strip"></canvas>
+          <div class="legend-row">
+            @for (r of rateLegend(); track r) {
+              <span class="key"><span class="dot" [style.background]="color(r)"></span>{{ regimeLabel(r) }}</span>
+            }
+          </div>
+        </div>
+      }
+
+      <div class="grid2">
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h4>Decode-rate distribution</h4>
+            <span class="chart-unit">tok/s · n={{ fmtInt(deck().n) }}</span>
+          </div>
+          <canvas id="cvRateHist" class="chart"></canvas>
+        </div>
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h4>Inter-token latency distribution</h4>
+            <span class="chart-unit">ms · n={{ fmtInt(scopeGaps().length) }} · log count</span>
+          </div>
+          <canvas id="cvLatHist" class="chart"></canvas>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h4>Acceptance rate estimate</h4>
+            <span class="pill est">ESTIMATE</span>
+          </div>
+          <canvas id="cvAcceptance" class="chart"></canvas>
+          <div class="muted small">faded line: decode tok/s (right axis, own scale)</div>
+        </div>
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h4>Speculation depth distribution</h4>
+            <span class="pill est">ESTIMATE</span>
+          </div>
+          <canvas id="cvSpecDepth" class="chart"></canvas>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="chart-card card">
+          <div class="chart-head"><h4>Tokens per request</h4></div>
+          <canvas id="cvTokens" class="chart"></canvas>
+        </div>
+      </div>
+
+      <div class="mgroup">
+        <div class="mgroup-title">{{ sectionMode() ? 'Section mix' : 'Regime mix' }}</div>
+        <div class="cells">
+          @if (sectionMode()) {
+            @for (s of sectionMix(); track s.label) {
+              <div class="mcell">
+                <span class="k"><span class="regdot" [style.background]="s.color"></span>{{ s.label }}</span>
+                <span class="v mono">{{ s.tokShare.toFixed(1) }}%</span>
+              </div>
+            }
+          } @else {
+            @for (l of veloStrip().legend; track l.regime) {
+              <div class="mcell">
+                <span class="k"><span class="regdot" [style.background]="l.color"></span>{{ l.label }}</span>
+                <span class="v mono">{{ l.tokShare.toFixed(1) }}%</span>
+              </div>
+            }
+          }
+        </div>
+      </div>
+
+      <div class="card compact-notes">
+        @for (n of compactNotes(); track n) {
+          <div class="muted small">{{ n }}</div>
+        }
+      </div>
+    }
+
+    @if (tab() === 'analytics') {
+      <!-- ═══ Telemetry report · redesigned top (At a Glance → Terminology) ═══ -->
+      <div class="perf">
+        <header class="perf-header">
+          <div class="perf-eyebrow">Inference Telemetry · Session Report</div>
+          <h1 class="perf-h1">Generation Performance</h1>
+          <p class="perf-summary">
+            A <strong class="num">{{ perf().d.genMs ? fmtDur(perf().d.genMs) : '—' }}</strong> session that produced
+            <strong class="num">{{ fmtInt(perf().d.totalTokens) }}</strong> tokens across
+            <strong class="num">{{ perf().d.turns }}</strong> turn{{ perf().d.turns === 1 ? '' : 's' }}.
+            Streaming held <strong class="num">{{ fmtPct(headline().stability) }}</strong> of peak throughput with a
+            <strong class="num">{{ headline().ttftP50 == null ? '—' : fmtS(headline().ttftP50) }}</strong> first-token response —
+            and <strong class="num">{{ fmtPct(perf().d.reasoningShare, 0) }}</strong> of tokens went to internal reasoning.
+          </p>
+          <div class="perf-chips num">
+            <span class="perf-chip">⏱ Runtime <b>{{ perf().d.genMs ? fmtDur(perf().d.genMs) : '—' }}</b></span>
+            <span class="perf-chip">🔁 Turns <b>{{ perf().d.turns }}</b></span>
+            <span class="perf-chip">📦 Total tokens <b>{{ fmtInt(perf().d.totalTokens) }}</b></span>
+            <span class="perf-chip">⚡ Avg overall rate <b>{{ perf().overallRate == null ? '—' : '≈ ' + fmt1n(perf().overallRate) + ' tok/s' }}</b></span>
+          </div>
+        </header>
+
+        <!-- Concurrent: decode timeline of ALL workers + Σ over shared t=0 -->
+        @if (conc(); as cc0) {
+          <section class="perf-sec">
+            <div class="perf-sechead"><h2>Decode Rate Timeline — Workers + Σ</h2><div class="perf-rule"></div></div>
+            <div class="chart-card card">
+              <div class="chart-head">
+                <h3>Parallel decode — {{ cc0.workers }} workers + SUM</h3>
+                <span class="chart-unit">tok/s · shared t=0 · Σ median {{ cc0.sumMed == null ? '—' : fmt1n(cc0.sumMed) }} · min {{ cc0.sumMin == null ? '—' : fmt1n(cc0.sumMin) }} · max {{ cc0.sumMax == null ? '—' : fmt1n(cc0.sumMax) }}</span>
+              </div>
+              <canvas #cvConc id="cvConc" class="chart hero-chart"></canvas>
+              <div class="legend-row">
+                <span class="key"><span class="dot" style="background:#e8ecf4"></span><b>Σ of workers (200 ms bins)</b></span>
+                <span class="key muted">— — Σ median {{ cc0.sumMed == null ? '—' : fmt1n(cc0.sumMed) }} tok/s</span>
+                <span class="key muted">thin colored lines = individual workers</span>
+              </div>
+              <div class="muted small">Every worker drawn over the same timeframe (all started together); the Σ series sums all workers' tokens per 200 ms bin. Median, min and max of the Σ line are the report's headline numbers.</div>
+              <table class="rate-table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th class="num">Median tok/s</th>
+                    <th class="num">Min tok/s</th>
+                    <th class="num">Max tok/s</th>
+                    <th class="num">Avg acceptance rate</th>
+                    <th class="num">Avg speculation depth</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (r of rateTable(); track r.label) {
+                    <tr [class.head-row]="r.label === 'All (Σ)'">
+                      <td>{{ r.label }}</td>
+                      <td class="num">{{ r.med == null ? '—' : fmt1(r.med) }}</td>
+                      <td class="num">{{ r.min == null ? '—' : fmt1(r.min) }}</td>
+                      <td class="num">{{ r.max == null ? '—' : fmt1(r.max) }}</td>
+                      <td class="num">{{ r.acc == null ? '—' : fmtPct(r.acc, 1) }}</td>
+                      <td class="num">{{ r.depth == null ? '—' : r.depth.toFixed(2) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </section>
+        }
+
+        <!-- At a Glance -->
+        <section class="perf-sec">
+          <div class="perf-sechead"><h2>At a Glance</h2><div class="perf-rule"></div></div>
+          <div class="perf-grid perf-g5">
+            @if (conc(); as cc) {
+              <div class="perf-card">
+                <div class="perf-accent indigo"></div>
+                <span class="perf-pill perf-pill good">AGGREGATE</span>
+                <div class="perf-label"><span data-tip="Combined sustained decode rate: the sum of every worker's own sustained tok/s — what the hardware delivers while all streams run.">⚡ Aggregate decode</span></div>
+                <div class="perf-value num">{{ cc.sumMed == null ? '—' : fmt1(cc.sumMed!) }}<small>tok/s</small></div>
+                <div class="perf-sub num">Σ tok ÷ wall {{ cc.wallAgg == null ? '—' : fmt1(cc.wallAgg!) }} · mean worker {{ cc.meanWorker == null ? '—' : fmt1(cc.meanWorker!) }}</div>
+              </div>
+            } @else {
+              <div class="perf-card">
+                <div class="perf-accent indigo"></div>
+                <span class="perf-pill" [class]="'perf-pill ' + perfPillStability().cls">{{ perfPillStability().label }}</span>
+                <div class="perf-label"><span data-tip="Median tokens generated per second, measured over a 3-second rolling window across the session's samples.">Decode rate</span></div>
+                <div class="perf-value num">{{ headline().medRate == null ? '—' : fmt1(headline().medRate!) }}<small>tok/s</small></div>
+                <div class="perf-sub num">3s rolling window · n = {{ fmtInt(headline().n) }}</div>
+              </div>
+            }
+            <div class="perf-card">
+              <div class="perf-accent green"></div>
+              <span class="perf-pill" [class]="'perf-pill ' + perfPillTtft().cls">{{ perfPillTtft().label }}</span>
+              <div class="perf-label"><span data-tip="Time to first token (TTFT) — how long until generation visibly starts.">First token</span></div>
+              <div class="perf-value num">@if (conc(); as cc2) { {{ cc2.ttftAvg == null ? '—' : fmtS(cc2.ttftAvg!) }} } @else { {{ headline().ttftP50 == null ? '—' : fmtS(headline().ttftP50) }} }</div>
+              <div class="perf-sub num">@if (conc()) {avg across workers} @else {P95 {{ fmtMs(perf().d.ttftP95) }} · P99 {{ fmtMs(perf().d.ttftP99) }}}</div>
+            </div>
+            <div class="perf-card">
+              <div class="perf-accent green"></div>
+              <div class="perf-label"><span data-tip="Share of peak generation rate sustained during steady streaming.">Stability</span></div>
+              <div class="perf-donutcard">
+                <svg class="perf-donut" width="64" height="64" viewBox="0 0 64 64">
+                  <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="7"/>
+                  <circle cx="32" cy="32" r="26" fill="none" stroke="#4ade80" stroke-width="7" stroke-linecap="round"
+                    [attr.stroke-dasharray]="perf().donut(conc()?.stabilityAvg ?? headline().stability) + ' 163.4'" transform="rotate(-90 32 32)"/>
+                  <text x="32" y="37" text-anchor="middle" fill="#e8ecf4" font-size="15" class="num">{{ fmtPct(conc()?.stabilityAvg ?? headline().stability) }}</text>
+                </svg>
+                <div class="perf-sub" style="margin:0">@if (conc()) {mean vs peak<br>of the Σ line} @else {sustained vs<br>peak rate}</div>
+              </div>
+            </div>
+            <div class="perf-card">
+              <div class="perf-accent violet"></div>
+              <div class="perf-label"><span data-tip="Total tokens emitted into the visible output stream.">Output volume @if (conc()) {<span>(avg/worker)</span>}</span></div>
+              <div class="perf-value num">{{ fmtInt(deck().outputTokens) }}<small>tok</small></div>
+              <div class="perf-sub num">@if (conc()) {Σ {{ fmtInt(deck().outputTotal) }} · }{{ fmtPct(perf().d.reasoningShare, 0) }} of all tokens went to reasoning</div>
+            </div>
+            <div class="perf-card">
+              <div class="perf-accent amber"></div>
+              <div class="perf-label"><span data-tip="90th percentile gap between consecutive tokens — the 'slowest 1-in-10 tokens'.">P90 token gap</span></div>
+              <div class="perf-value num">{{ fmtMsPrec(headline().itlP90) }}</div>
+              <div class="perf-sub">tail of per-token gaps — see latency section</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Where the Tokens Went (single-stream sessions only) -->
+        @if (!conc()) {
+        <section class="perf-sec">
+          <div class="perf-sechead"><h2>Where the Tokens Went</h2><div class="perf-rule"></div></div>
+          <div class="perf-card">
+            @if (perf().d.reasoningShare != null) {
+              <div class="perf-splitbar num">
+                <div class="perf-seg perf-seg-reasoning" [style.width.%]="perfReasoningPct()">Reasoning&nbsp; {{ fmtInt(perf().d.reasoningTokens) }} · {{ fmtPct(perf().d.reasoningShare, 1) }}</div>
+                <div class="perf-seg perf-seg-output" [style.width.%]="perfOutputPct()">Output&nbsp; {{ fmtInt(perf().d.outputTokens) }} · {{ fmtPct(100 - perf().d.reasoningShare!, 1) }}</div>
+              </div>
+              <div class="perf-legend num">
+                <span><span class="perf-dot" style="background:#a78bfa"></span>Reasoning — internal thinking tokens</span>
+                <span><span class="perf-dot" style="background:#4ade80"></span>Output — visible response tokens</span>
+              </div>
+            } @else {
+              <div class="perf-sub">Token-kind split not available for this session.</div>
+            }
+            <div class="perf-statrow num">
+              <div class="perf-stat"><div class="perf-k">Total tokens</div><div class="perf-v">{{ fmtInt(perf().d.totalTokens) }}</div></div>
+              <div class="perf-stat"><div class="perf-k">Tokens / request {{ conc() ? '(avg)' : '(P50)' }}</div><div class="perf-v">{{ fmtInt(perf().d.tokMed) }}</div></div>
+              <div class="perf-stat"><div class="perf-k">Output rate</div><div class="perf-v">{{ perf().outputRate == null ? '—' : '≈ ' + fmt1n(perf().outputRate) + ' tok/s' }}</div></div>
+              <div class="perf-stat"><div class="perf-k">Overall rate</div><div class="perf-v">{{ perf().overallRate == null ? '—' : '≈ ' + fmt1n(perf().overallRate) + ' tok/s' }}</div></div>
+            </div>
+            @if (perf().d.reasoningShare != null) {
+              <div class="perf-insight">
+                <span class="perf-iicon">◆</span>
+                <span><b>{{ fmtPct(perf().d.reasoningShare, 0) }} of compute went to reasoning.</b>
+                For every visible token, ~{{ fmtTimes(1 / (1 - perf().d.reasoningShare!) - 1) }} thinking token(s) were generated — typical for reasoning-heavy models on complex turns.</span>
+              </div>
+            }
+          </div>
+        </section>
+
+        }
+        <!-- Throughput -->
+        <section class="perf-sec">
+          <div class="perf-sechead"><h2>{{ conc() ? 'Throughput (Single stream average)' : 'Throughput' }}</h2><div class="perf-rule"></div></div>
+          <div class="perf-card">
+            @if (conc(); as cc3) {
+              @if (cc3.workerMin != null && cc3.workerMax != null) {
+                <div class="perf-rangewrap num">
+                  <div class="perf-track">
+                    <div class="perf-marker min" [style.left.%]="perf().pos(cc3.workerMin)"></div>
+                    <div class="perf-marker" [style.left.%]="perf().pos(cc3.meanWorker)"></div>
+                    <div class="perf-marker max" [style.left.%]="perf().pos(cc3.workerMax)"></div>
+                  </div>
+                  <div class="perf-markerlabel" [style.left.%]="perf().pos(cc3.workerMin)"><div class="perf-mv">{{ fmt1n(cc3.workerMin) }}</div><div class="perf-mk">Slowest worker</div></div>
+                  <div class="perf-markerlabel" [style.left.%]="perf().pos(cc3.meanWorker)"><div class="perf-mv" style="color:var(--perf-indigo)">{{ fmt1n(cc3.meanWorker) }}</div><div class="perf-mk">Mean worker</div></div>
+                  <div class="perf-markerlabel" [style.left.%]="perf().pos(cc3.workerMax)"><div class="perf-mv" style="color:var(--perf-violet)">{{ fmt1n(cc3.workerMax) }}</div><div class="perf-mk">Fastest worker</div></div>
+                </div>
+              }
+              <div class="perf-ministats num">
+                <div class="perf-mini"><span class="perf-k">TPOT (avg)</span><span class="perf-v">{{ fmtMsPrec(deck().tpot) }}<small>/token</small></span></div>
+                <div class="perf-mini"><span class="perf-k">Σ all workers</span><span class="perf-v">{{ fmt1n(cc3.agg) }}<small>tok/s</small></span></div>
+                <div class="perf-mini"><span class="perf-k">Mean vs peak of Σ</span><span class="perf-v">{{ fmtPct(cc3.stabilityAvg) }}</span></div>
+                <div class="perf-mini"><span class="perf-k">End-to-end Σ÷wall</span><span class="perf-v">{{ cc3.wallAgg == null ? '—' : fmt1n(cc3.wallAgg) + ' tok/s' }}</span></div>
+                <div class="perf-mini"><span class="perf-k">Peak worker</span><span class="perf-v">{{ fmt1n(cc3.workerMax) }}<small>tok/s</small></span></div>
+                <div class="perf-mini"><span class="perf-k">Slowest worker</span><span class="perf-v">{{ fmt1n(cc3.workerMin) }}<small>tok/s</small></span></div>
+              </div>
+            } @else if (perf().d.minRate != null && perf().d.maxRate != null) {
+              <div class="perf-rangewrap num">
+                <div class="perf-track">
+                  <div class="perf-marker min" [style.left.%]="perf().pos(perf().d.minRate)"></div>
+                  <div class="perf-marker" [style.left.%]="perf().pos(headline().medRate)"></div>
+                  <div class="perf-marker max" [style.left.%]="perf().pos(perf().d.maxRate)"></div>
+                </div>
+                <div class="perf-markerlabel" [style.left.%]="perf().pos(perf().d.minRate)"><div class="perf-mv">{{ fmt1n(perf().d.minRate) }}</div><div class="perf-mk">Min tok/s</div></div>
+                <div class="perf-markerlabel" [style.left.%]="perf().pos(headline().medRate)"><div class="perf-mv" style="color:var(--perf-indigo)">{{ fmt1n(headline().medRate) }}</div><div class="perf-mk">Median (P50)</div></div>
+                <div class="perf-markerlabel" [style.left.%]="perf().pos(perf().d.maxRate)"><div class="perf-mv" style="color:var(--perf-violet)">{{ fmt1n(perf().d.maxRate) }}</div><div class="perf-mk">Max tok/s</div></div>
+              </div>
+              <div class="perf-ministats num">
+                <div class="perf-mini"><span class="perf-k">TPOT (P50)</span><span class="perf-v">{{ fmtMsPrec(perf().d.tpot) }}<small>/token</small></span></div>
+              <div class="perf-mini"><span class="perf-k">Sustained / peak</span><span class="perf-v">{{ fmtPct(perf().d.sustainPct) }}</span></div>
+              <div class="perf-mini"><span class="perf-k"><span data-tip="Median absolute deviation ÷ median — how much the rate wobbles around its median. Higher = less predictable pacing.">Volatility (MAD/med)</span></span><span class="perf-v">{{ fmtPct(perf().d.volatility, 1) }}</span></div>
+              <div class="perf-mini"><span class="perf-k">P90 / P50</span><span class="perf-v">{{ fmtTimes(perf().d.decodeTail) }}</span></div>
+              <div class="perf-mini"><span class="perf-k">Peak capability</span><span class="perf-v">{{ fmt1n(perf().d.maxRate) }}<small>tok/s</small></span></div>
+                <div class="perf-mini"><span class="perf-k">Floor</span><span class="perf-v">{{ fmt1n(perf().d.minRate) }}<small>tok/s</small></span></div>
+              </div>
+            }
+          </div>
+        </section>
+
+        <!-- Latency -->
+        <section class="perf-sec">
+          <div class="perf-sechead"><h2>{{ conc() ? 'Latency (Single stream average)' : 'Latency' }}</h2><div class="perf-rule"></div></div>
+          <div class="perf-grid perf-g2">
+            <div class="perf-card">
+              <div class="perf-label">Per-Token Gaps · Inter-Token Latency</div>
+              @if (conc(); as cc4) {
+              <div class="num">
+                <div class="perf-lbar">
+                  <span class="perf-p">avg</span>
+                  <div class="perf-bar"><div class="perf-fill" [style.width.%]="perf().itlBar(cc4.itlAvg)" style="background:var(--perf-indigo)"></div></div>
+                  <span class="perf-lv">{{ fmtMsPrec(cc4.itlAvg) }}</span>
+                </div>
+                <div class="perf-ministats perf-minis2 num">
+                  <div class="perf-mini"><span class="perf-k">Mean gap per worker</span><span class="perf-v">{{ cc4.workerItls?.length || 0 }} workers averaged</span></div>
+                  <div class="perf-mini"><span class="perf-k">TPOT (avg)</span><span class="perf-v">{{ fmtMsPrec(deck().tpot) }}</span></div>
+                </div>
+              </div>
+              <div class="perf-axisnote">single-stream averages — one bar per mean gap across the parallel workers</div>
+              } @else {
+              <div class="num">
+                <div class="perf-lbar">
+                  <span class="perf-p">P50</span>
+                  <div class="perf-bar"><div class="perf-fill" [style.width.%]="perf().itlBar(perf().d.itlP50)" style="background:var(--perf-indigo)"></div></div>
+                  <span class="perf-lv">{{ fmtMsPrec(perf().d.itlP50) }}</span>
+                </div>
+                <div class="perf-lbar">
+                  <span class="perf-p">P90</span>
+                  <div class="perf-bar"><div class="perf-fill" [style.width.%]="perf().itlBar(perf().d.itlP90)" style="background:var(--perf-violet)"></div></div>
+                  <span class="perf-lv">{{ fmtMsPrec(perf().d.itlP90) }}</span>
+                </div>
+                <div class="perf-lbar">
+                  <span class="perf-p">P99</span>
+                  <div class="perf-bar"><div class="perf-fill" [style.width.%]="perf().itlBar(perf().d.itlP99)" style="background:var(--perf-amber)"></div></div>
+                  <span class="perf-lv">{{ fmtMsPrec(perf().d.itlP99) }}</span>
+                </div>
+              </div>
+              <div class="perf-axisnote">bars on a log scale (0.1 ms → ~2× p99) — the median is typically far smaller than the tail</div>
+              <div class="perf-ministats perf-minis2 num">
+                <div class="perf-mini"><span class="perf-k"><span data-tip="Standard deviation of per-token gaps.">Jitter (σ)</span></span><span class="perf-v">{{ fmtMsPrec(perf().d.itlStd) }}</span></div>
+                <div class="perf-mini"><span class="perf-k">P99 / P50</span><span class="perf-v">{{ fmtTimes(perf().d.jitterRatio) }}</span></div>
+              </div>
+              <div class="perf-insight">
+                <span class="perf-iicon">◆</span>
+                <span><b>Tokens arrive in bursts, not a steady drip.</b> The median gap measures pacing inside each burst; the tail is the pause between bursts.</span>
+              </div>
+              }
+            </div>
+            <div class="perf-card">
+              <div class="perf-label">Request Milestones</div>
+              @if (conc(); as cc5) {
+              <div class="perf-trio num">
+                <div class="perf-cell"><div class="perf-k">TTFT avg</div><div class="perf-v2">{{ cc5.ttftAvg == null ? '—' : fmtMs(cc5.ttftAvg) }}</div><div class="perf-cellbar"><i [style.width.%]="perf().ttftBar(cc5.ttftAvg)"></i></div></div>
+                <div class="perf-cell"><div class="perf-k">TTST avg</div><div class="perf-v2">{{ cc5.ttstAvg == null ? '—' : fmtMsPrec(cc5.ttstAvg) }}</div></div>
+                <div class="perf-cell"><div class="perf-k">TTFO avg</div><div class="perf-v2">{{ cc5.ttfoAvg == null ? '—' : fmtMsPrec(cc5.ttfoAvg) }}</div></div>
+              </div>
+              <div class="perf-axisnote" style="margin-top:8px">averages across the parallel workers</div>
+              <div class="perf-ministats perf-minis2 num">
+                <div class="perf-mini"><span class="perf-k">Prefill tok/s</span><span class="perf-v">{{ perf().d.promptPresent ? '≈ ' + fmt1n(cc5.prefillAvg) : '—' }}</span></div>
+                <div class="perf-mini"><span class="perf-k">Tok / request (avg)</span><span class="perf-v">{{ fmtInt(deck().tokMed) }}</span></div>
+              </div>
+              } @else {
+              <div class="perf-trio num">
+                <div class="perf-cell"><div class="perf-k">TTFT P50</div><div class="perf-v2">{{ fmtMs(perf().d.ttftP50) }}</div><div class="perf-cellbar"><i [style.width.%]="perf().ttftBar(perf().d.ttftP50)"></i></div></div>
+                <div class="perf-cell"><div class="perf-k">TTFT P95</div><div class="perf-v2">{{ fmtMs(perf().d.ttftP95) }}</div><div class="perf-cellbar"><i [style.width.%]="perf().ttftBar(perf().d.ttftP95)"></i></div></div>
+                <div class="perf-cell"><div class="perf-k">TTFT P99</div><div class="perf-v2">{{ fmtMs(perf().d.ttftP99) }}</div><div class="perf-cellbar"><i [style.width.%]="perf().ttftBar(perf().d.ttftP99)"></i></div></div>
+              </div>
+              <div class="perf-axisnote" style="margin-top:8px">time-to-first-token, bars normalised to P95</div>
+              <div class="perf-ministats perf-minis2 num">
+                <div class="perf-mini"><span class="perf-k"><span data-tip="Time to start of streaming (TTST) — when the first bytes begin flowing.">TTST (P50)</span></span><span class="perf-v">{{ fmtMsPrec(perf().d.ttst) }}</span></div>
+                <div class="perf-mini"><span class="perf-k"><span data-tip="Time to first output (TTFO) — until the first meaningful output chunk, after reasoning begins.">TTFO (P50)</span></span><span class="perf-v">{{ fmtMsPrec(perf().d.ttfo) }}</span></div>
+                <div class="perf-mini"><span class="perf-k">Prefill tok/s</span><span class="perf-v">{{ perf().d.promptPresent ? fmt1n(perf().d.prefill) : '—' }}</span></div>
+                <div class="perf-mini"><span class="perf-k">Tok / request (P50)</span><span class="perf-v">{{ fmtInt(perf().d.tokMed) }}</span></div>
+              </div>
+              }
+            </div>
+          </div>
+        </section>
+
+        <!-- Quality & Diagnostics (single-stream sessions only) -->
+        @if (!conc()) {
+        <section class="perf-sec">
+          <div class="perf-sechead"><h2>Quality &amp; Diagnostics</h2><div class="perf-rule"></div></div>
+          <div class="perf-grid perf-g4">
+            <div class="perf-card">
+              <span class="perf-pill" [class]="'perf-pill ' + perfPillVariance().cls">{{ perfPillVariance().label }}</span>
+              <div class="perf-label">Run variance</div>
+              <div class="perf-value num">{{ perf().d.runCvPct == null ? '—' : fmtPct(perf().d.runCvPct, 1) }}</div>
+              <div class="perf-sub">session-to-session spread · needs ≥2 turns ({{ perf().d.turns }} recorded)</div>
+            </div>
+            <div class="perf-card">
+              <div class="perf-label">Reasoning share</div>
+              <div class="perf-donutcard">
+                <svg class="perf-donut" width="56" height="56" viewBox="0 0 64 64">
+                  <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="8"/>
+                  <circle cx="32" cy="32" r="26" fill="none" stroke="#a78bfa" stroke-width="8" stroke-linecap="round"
+                    [attr.stroke-dasharray]="perf().donut(perf().d.reasoningShare) + ' 163.4'" transform="rotate(-90 32 32)"/>
+                </svg>
+                <div class="perf-value num" style="font-size:28px">{{ fmtPct(perf().d.reasoningShare, 1) }}</div>
+              </div>
+              <div class="perf-sub">of all tokens were reasoning</div>
+            </div>
+            <div class="perf-card">
+              <span class="perf-pill" [class]="'perf-pill ' + perfPillTransition().cls">{{ perfPillTransition().label }}</span>
+              <div class="perf-label"><span data-tip="Throughput dip measured over the first 32 tokens immediately after a model/state switch.">Transition cost</span></div>
+              <div class="perf-value num">{{ transitionCost() == null ? '—' : (transitionCost()! > 0 ? '+' : '') + transitionCost()!.toFixed(0) + '%' }}</div>
+              <div class="perf-sub">first 32 tokens after switch</div>
+            </div>
+            <div class="perf-card">
+              <span class="perf-pill" [class]="'perf-pill ' + perfPillAlpha().cls">{{ perfPillAlpha().label }}</span>
+              <div class="perf-label">True α (server)</div>
+              <div class="perf-value num">{{ perf().d.trueAlpha == null ? '—' : fmtPct(perf().d.trueAlpha, 1) }}</div>
+              <div class="perf-sub">server-side acceptance ground truth</div>
+            </div>
+          </div>
+        </section>
+        }
+
+      </div>
+
+      <!-- §9.1 run findings -->
+      @if (findings().length) {
+        <div class="findings card" id="sec-findings">
+          <div class="mgroup-title">Run findings</div>
+          <ul>
+            @for (f of findings(); track f.text) {
+              <li><a [href]="f.href" (click)="jump($event, f.href)">{{ f.text }}</a></li>
+            }
+          </ul>
+        </div>
+      }
+
+      <!-- per-turn timings (multi-turn sessions only) -->
+      @if (turnRows().length > 1) {
+@if (conc()) {
+            @for (g of turnGroups(); track g.name) {
+              <div class="card turntable-card">
+                <div class="chart-head"><h4>{{ g.name }}</h4><span class="chart-unit">barrier step · {{ g.rows.length }} worker turn(s) · Σ / avg = step total</span></div>
+                <table class="ttable">
+                  <thead><tr><th>Worker</th><th class="num">Input tok</th><th>Output tok</th><th>Total tok</th><th>TTFT</th><th>Prefill tok/s</th><th class="num">Med tok/s</th><th class="num">Med tok/s (aggr.)</th><th class="num">Min</th><th class="num">Max</th><th class="num">α̂ avg</th><th class="num">Depth avg</th></tr></thead>
+                  <tbody>
+                    @for (r of g.rows; track r.n) {
+                      <tr>
+                        <td class="mono">{{ r.section ?? '—' }}</td>
+                        <td class="mono">{{ r.input == null ? '—' : fmtInt(r.input) }}</td>
+                        <td class="mono">{{ r.out == null ? '—' : fmtInt(r.out) }}</td>
+                        <td class="mono">{{ r.total == null ? '—' : fmtInt(r.total) }}</td>
+                        <td class="mono">{{ r.ttft == null ? '—' : fmtMs(r.ttft) }}</td>
+                        <td class="mono">{{ r.prefill == null ? '—' : fmt1n(r.prefill) }}</td>
+                        <td class="mono">{{ r.med == null ? '—' : fmt1n(r.med) }}</td>
+                        <td class="mono muted">—</td>
+                        <td class="mono">{{ r.min == null ? '—' : fmt1n(r.min) }}</td>
+                        <td class="mono">{{ r.max == null ? '—' : fmt1n(r.max) }}</td>
+                        <td class="mono">{{ r.acc == null ? '—' : fmtPct(r.acc, 0) }}</td>
+                        <td class="mono">{{ r.depth == null ? '—' : r.depth.toFixed(1) }}</td>
+                      </tr>
+                    }
+                    @if (g.agg; as ga) {
+                      <tr class="agg-row">
+                        <td class="mono">Σ / avg</td>
+                        <td class="mono">{{ fmtInt(ga.input) }}</td>
+                        <td class="mono">{{ fmtInt(ga.out) }}</td>
+                        <td class="mono">{{ fmtInt(ga.input + ga.out) }}</td>
+                        <td class="mono">{{ ga.ttft == null ? '—' : fmtMs(ga.ttft) }}</td>
+                        <td class="mono">{{ ga.prefill == null ? '—' : fmt1n(ga.prefill) }}</td>
+                        <td class="mono">{{ ga.med == null ? '—' : fmt1n(ga.med) }}</td>
+                        <td class="mono strong">{{ ga.medSum == null ? '—' : fmt1n(ga.medSum) }}</td>
+                        <td class="mono">{{ ga.min == null ? '—' : fmt1n(ga.min) }}</td>
+                        <td class="mono">{{ ga.max == null ? '—' : fmt1n(ga.max) }}</td>
+                        <td class="mono">{{ ga.acc == null ? '—' : fmtPct(ga.acc, 0) }}</td>
+                        <td class="mono">{{ ga.depth == null ? '—' : ga.depth.toFixed(1) }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          } @else {
+        <div class="card turntable-card">
+          <div class="chart-head"><h4>Per-turn timings</h4><span class="chart-unit">sent = tokens the model received for that turn (incl. conversation history)</span></div>
+          <table class="ttable">
+            <thead><tr><th>Turn</th>@if (sectionMode()) {<th>Section</th>}<th class="num">Input tok</th><th>Output tok</th><th>Total tok</th><th>TTFT</th><th>Prefill tok/s</th><th class="num">Med tok/s</th><th class="num">Min</th><th class="num">Max</th><th class="num">α̂ avg</th><th class="num">Depth avg</th></tr></thead>
+            <tbody>
+              @for (r of turnRows(); track r.n) {
+                <tr>
+                  <td class="mono">{{ r.name }}</td>
+                  @if (sectionMode()) {
+                    <td class="mono muted">{{ r.section ?? '—' }}</td>
+                  }
+                  <td class="mono">{{ r.input == null ? '—' : fmtInt(r.input) }}</td>
+                  <td class="mono">{{ r.out == null ? '—' : fmtInt(r.out) }}</td>
+                  <td class="mono">{{ r.total == null ? '—' : fmtInt(r.total) }}</td>
+                  <td class="mono">{{ r.ttft == null ? '—' : fmtMs(r.ttft) }}</td>
+                  <td class="mono">{{ r.prefill == null ? '—' : fmt1n(r.prefill) }}</td>
+                  <td class="mono">{{ r.med == null ? '—' : fmt1n(r.med) }}</td>
+                  <td class="mono">{{ r.min == null ? '—' : fmt1n(r.min) }}</td>
+                  <td class="mono">{{ r.max == null ? '—' : fmt1n(r.max) }}</td>
+                  <td class="mono">{{ r.acc == null ? '—' : fmtPct(r.acc, 0) }}</td>
+                  <td class="mono">{{ r.depth == null ? '—' : r.depth.toFixed(1) }}</td>
+                </tr>
+              }
+              @if (conc(); as cc6) {
+                <tr class="agg-row">
+                  <td class="mono">Σ / avg</td>
+                  @if (sectionMode()) {
+                    <td class="mono muted">all workers</td>
+                  }
+                  <td class="mono">{{ fmtInt(concTurnAgg()?.input ?? 0) }}</td>
+                  <td class="mono">{{ fmtInt(cc6.totalTokens) }}</td>
+                  <td class="mono">{{ fmtInt((concTurnAgg()?.input ?? 0) + cc6.totalTokens) }}</td>
+                  <td class="mono">{{ cc6.ttftAvg == null ? '—' : fmtMs(cc6.ttftAvg) }}</td>
+                  <td class="mono">{{ cc6.prefillAvg == null ? '—' : fmt1n(cc6.prefillAvg) }}</td>
+                  <td class="mono">{{ concTurnAgg()?.med == null ? '—' : fmt1n(concTurnAgg()!.med!) }}</td>
+                  <td class="mono">{{ concTurnAgg()?.min == null ? '—' : fmt1n(concTurnAgg()!.min!) }}</td>
+                  <td class="mono">{{ concTurnAgg()?.max == null ? '—' : fmt1n(concTurnAgg()!.max!) }}</td>
+                  <td class="mono">{{ concTurnAgg()?.acc == null ? '—' : fmtPct(concTurnAgg()!.acc!, 0) }}</td>
+                  <td class="mono">{{ concTurnAgg()?.depth == null ? '—' : concTurnAgg()!.depth!.toFixed(1) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+          }
+      }
+
+      <!-- §3.4 hero timeline + comparison table (single-stream only; concurrent renders it at the top) -->
+      @if (!conc()) {
+      <div class="chart-card card" id="sec-hero">
+        <div class="chart-head">
+          <h3>Decode rate timeline</h3>
+          <span class="chart-unit">Decode rate · tok/s · n={{ fmtInt(deck().n) }} · 3 s rolling window</span>
+        </div>
+        <canvas #cvRate id="cvRate" class="chart hero-chart"></canvas>
+        <div class="legend-row">
+          @for (r of rateLegend(); track r) {
+            <span class="key"><span class="dot" [style.background]="color(r)"></span>{{ regimeLabel(r) }}</span>
+          }
+          <span class="key muted">— — p50 median · ▮ regime rail (bottom) · dotted = turn boundary</span>
+        </div>
+        <div class="muted small">3 s rolling-window rate (same as the live panel); samples throttled to one per 120 ms, first 5 samples of each turn dropped as warm-up; neutral line over regime bands; turns concatenated with 1 s visual gaps. Annotations mark the three largest moves.</div>
+        <table class="rate-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th class="num">Median tok/s</th>
+              <th class="num">Min tok/s</th>
+              <th class="num">Max tok/s</th>
+              <th class="num">Avg acceptance rate</th>
+              <th class="num">Avg speculation depth</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of rateTable(); track r.label) {
+              <tr [class.head-row]="r.label === 'All'">
+                <td>
+                  @if (r.label !== 'All') {
+                    <span class="dot" [style.background]="color(r.label)"></span>
+                  }
+                  {{ r.label }}
+                </td>
+                <td class="num">{{ r.med == null ? '—' : fmt1(r.med) }}</td>
+                <td class="num">{{ r.min == null ? '—' : fmt1(r.min) }}</td>
+                <td class="num">{{ r.max == null ? '—' : fmt1(r.max) }}</td>
+                <td class="num">{{ r.acc == null ? '—' : fmtPct(r.acc, 1) }}</td>
+                <td class="num">{{ r.depth == null ? '—' : r.depth.toFixed(2) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      }
+
+      <!-- §3.5 distribution diagnostics -->
+      <div class="grid2" id="sec-dist">
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h3>Decode-rate distribution</h3>
+            <span class="chart-unit">tok/s · n={{ fmtInt(deck().n) }} · bin 2 tok/s</span>
+          </div>
+          <canvas id="cvRateHist" class="chart"></canvas>
+        </div>
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h3>Inter-token latency distribution</h3>
+            <span class="chart-unit">Inter-token latency · ms · n={{ fmtInt(scopeGaps().length) }} · bin 0.5 ms · log count</span>
+          </div>
+          <canvas id="cvLatHist" class="chart"></canvas>
+          <div class="muted small">{{ latencyNote(scopeClusters()) }}</div>
+        </div>
+      </div>
+
+      <!-- §3.5 quality estimates -->
+      <div id="sec-quality">
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h3>Acceptance rate estimate</h3>
+            <span class="pill est">ESTIMATE</span>
+            <span class="chart-unit">α̂ · % of gaps · n={{ fmtInt(scopeAcceptance().length) }} · decode speed overlaid (faded, own scale)</span>
+          </div>
+          <canvas id="cvAcceptance" class="chart"></canvas>
+          <div class="muted small">α̂ estimated from low-latency share of bimodal inter-token gaps — not provider-reported · trailing window of n/6 gaps · faded line: decode tok/s (right axis, own scale)@if (metrics().trueAlpha != null) { · server-reported α: {{ fmtPct(metrics().trueAlpha, 1) }}}</div>
+        </div>
+      </div>
+
+      <!-- §3.6 request-level diagnostics -->
+      <div class="grid3" id="sec-requests">
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h3>Speculation depth distribution</h3>
+            <span class="pill est">ESTIMATE</span>
+            <span class="chart-unit">accepted length (τ proxy) · runs</span>
+          </div>
+          <canvas id="cvSpecDepth" class="chart"></canvas>
+          <div class="muted small">runs of 2, 3, 4, … low-latency (speculative) tokens — proxy for mean accepted length; estimate, not a server counter</div>
+        </div>
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h3>First-token latency by request</h3>
+            <span class="chart-unit">First-token latency · s · n={{ turnTtft().length }}</span>
+          </div>
+          <canvas id="cvTtft" class="chart"></canvas>
+        </div>
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h3>Tokens per request</h3>
+            <span class="chart-unit">completion tokens · n={{ turnTokens().length }}</span>
+          </div>
+          <canvas id="cvTokens" class="chart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card card">
+        <div class="chart-head">
+          <h3>By request</h3>
+          <span class="chart-unit">conversation-position effects · n={{ byTurn().length }}</span>
+        </div>
+        <table class="bins">
+          <thead>
+            <tr><th>turn</th><th class="num">TTFT</th><th class="num">completion tok</th><th class="num">prompt tok</th><th class="num">final tok/s</th></tr>
+          </thead>
+          <tbody>
+            @for (t of byTurn(); track t.index) {
+              <tr>
+                <td>{{ t.name }}</td>
+                <td class="num">{{ t.ttft == null ? '—' : fmtS(t.ttft) }}</td>
+                <td class="num">{{ t.tokens == null ? '—' : fmtInt(t.tokens) }}</td>
+                <td class="num">{{ t.prompt == null ? '—' : fmtInt(t.prompt) }}</td>
+                <td class="num">{{ t.finalTokS == null ? '—' : fmt1(t.finalTokS) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- §3.7 regime matrix (single-stream only) -->
+      @if (!conc()) {
+      <div class="chart-card card" id="sec-matrix">
+        <div class="chart-head">
+          <h3>Regime matrix</h3>
+          <span class="chart-unit">mix · performance · uncertainty · sufficiency</span>
+        </div>
+        <table class="bins">
+          <thead>
+            <tr>
+              <th>regime</th>
+              <th class="num">tok share</th>
+              <th class="num">time share</th>
+              <th class="num">turns</th>
+              <th class="num">samples</th>
+              <th class="num">median tok/s</th>
+              <th class="num">95% CI</th>
+              <th class="num">volatility</th>
+              <th class="num">reasoning tok</th>
+              <th class="num">output tok</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of regimeMatrix(); track r.regime) {
+              <tr>
+                <td><span class="dot" [style.background]="r.color"></span>{{ r.label }}</td>
+                <td class="num">{{ r.tokShare.toFixed(1) }}%</td>
+                <td class="num">{{ r.timeShare == null ? '—' : r.timeShare!.toFixed(1) + '%' }}</td>
+                <td class="num">{{ r.turns }}</td>
+                <td class="num">{{ fmtInt(r.n) }}</td>
+                <td class="num">{{ r.med == null ? '—' : fmt1(r.med) }}</td>
+                <td class="num">{{ r.ci == null ? '—' : '±' + fmt1((r.ci![1] - r.ci![0]) / 2) }}</td>
+                <td class="num">{{ r.volatility == null ? '—' : r.volatility!.toFixed(0) + '%' }}</td>
+                <td class="num">{{ statFor(r.regime)?.reasoningTokens ? fmtInt(statFor(r.regime)!.reasoningTokens) : '—' }}</td>
+                <td class="num">{{ statFor(r.regime)?.outputTokens ? fmtInt(statFor(r.regime)!.outputTokens) : '—' }}</td>
+                <td>
+                  @if (r.badge.level === 'low') { <span class="pill low">LOW SAMPLE</span> }
+                  @else if (r.badge.level === 'moderate') { <span class="pill moderate">MODERATE</span> }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        @if (emptyRegimes().length) {
+          <div class="muted small">no plottable samples for: {{ emptyRegimes().join(', ') }}</div>
+        }
+      </div>
+
+      <!-- §3.8 one panel per present regime, canonical order -->
+      @for (v of regimeViews(); track v.regime) {
+        <div class="regime-panel card" [style.border-top-color]="rail(v.regime)">
+          <div class="panel-head-row">
+            <span class="regime-chip" [style.background]="tint(v.regime)" [style.color]="color(v.regime)">{{ regimeLabel(v.regime) }}</span>
+            <span class="mono small muted">n={{ fmtInt(v.n) }} · {{ fmtInt(v.tokens) }} tok · median {{ v.medRate == null ? '—' : fmt1(v.medRate) }} tok/s</span>
+            @if (v.badge.level === 'low') { <span class="pill low">LOW SAMPLE</span> }
+            @else if (v.badge.level === 'moderate') { <span class="pill moderate">MODERATE</span> }
+          </div>
+          <div class="grid2">
+            <div>
+              <div class="chart-head"><span class="chart-title">decode rate timeline</span><span class="chart-unit">tok/s · n={{ fmtInt(v.n) }}</span></div>
+              <canvas [id]="'cvRegLine-' + v.regime" class="chart"></canvas>
+            </div>
+            <div>
+              <div class="chart-head"><span class="chart-title">decode-rate distribution</span><span class="chart-unit">tok/s · bin 2</span></div>
+              <canvas [id]="'cvRegRate-' + v.regime" class="chart"></canvas>
+            </div>
+          </div>
+          <div class="grid2">
+            <div>
+              <div class="chart-head"><span class="chart-title">inter-token latency</span><span class="chart-unit">ms · log count · n={{ fmtInt(v.gaps.length) }}</span></div>
+              <canvas [id]="'cvRegLat-' + v.regime" class="chart"></canvas>
+              <div class="muted small">{{ latencyNote(v.clusters) }}</div>
+            </div>
+            <div>
+              <div class="chart-head"><span class="chart-title">acceptance rate estimate</span><span class="pill est">ESTIMATE</span><span class="chart-unit">α̂ · % · n={{ fmtInt(v.acceptance.length) }}</span></div>
+              <canvas [id]="'cvRegAcc-' + v.regime" class="chart"></canvas>
+            </div>
+          </div>
+          <div class="grid2">
+            <div>
+              <div class="chart-head"><span class="chart-title">speculation depth distribution</span><span class="pill est">ESTIMATE</span><span class="chart-unit">runs</span></div>
+              <canvas [id]="'cvRegSpec-' + v.regime" class="chart"></canvas>
+            </div>
+            <div class="cluster-info">
+              <div class="muted small chart-title">latency clusters</div>
+              @if (v.split != null) {
+                <div class="mono small">
+                  split {{ v.split.toFixed(1) }} ms · valley depth {{ (v.clusters.eta * 100).toFixed(0) }}%<br />
+                  @for (c of v.clusters.clusters; track $index) {
+                    {{ $index === 0 ? 'low' : 'high' }}: ≈{{ c.mean.toFixed(1) }} ms · n={{ c.count }} · {{ c.min.toFixed(1) }}–{{ c.max.toFixed(1) }} ms<br />
+                  }
+                </div>
+              } @else {
+                <div class="muted small">{{ v.clusters.total === 0 ? 'no latency data in this slice' : 'unimodal distribution (speculation likely off)' }}</div>
+              }
+            </div>
+          </div>
+        </div>
+      }
+      }
+
+      <!-- §3.9 methodology, provenance, footer -->
+      <div class="chart-card card" id="sec-method">
+        <div class="chart-head">
+          <h3>Methodology &amp; data quality</h3>
+          <span class="chart-unit">what was excluded, what is unavailable</span>
+        </div>
+        @if (conc(); as cc7) {
+          <div class="muted small" style="padding:0 16px 8px">
+            Concurrent batch of {{ cc7.workers }} workers on one shared t=0 axis. Per-worker rate series use the same 3 s rolling window as single-stream reports (first 5 samples dropped as warm-up). The Σ line bins all workers' tokens per 200 ms; its median/min/max drive the headline stats. Acceptance-rate and speculation-depth figures remain estimates derived from the pooled inter-token gap stream.
+          </div>
+        }
+        <ul class="ledger">
+          @for (item of ledger(); track item) {
+            <li class="muted small">{{ item }}</li>
+          }
+        </ul>
+  <!-- Terminology -->
+        <section class="perf-sec">
+          <div class="perf-sechead"><h2>Terminology</h2><div class="perf-rule"></div></div>
+          <div class="perf-gloss">
+            <div><b>TTFT</b>Time to first token — delay before generation begins.</div>
+            <div><b>ITL</b>Inter-token latency — gap between consecutive tokens.</div>
+            <div><b>TPOT</b>Time per output token during steady streaming.</div>
+            <div><b>TTST</b>Time to start of streaming (first bytes flowing).</div>
+            <div><b>TTFO</b>Time to first visible output chunk (post-reasoning).</div>
+            <div><b>Jitter (σ)</b>Standard deviation across the token gap stream.</div>
+            <div><b>Volatility</b>MAD ÷ median throughput — pacing predictability.</div>
+            <div><b>P50 / P90 / P99</b>Median, and the value exceeded by 10% / 1% of samples.</div>
+            @if (conc()) {
+              <div><b>Worker</b>One parallel stream of a concurrent batch; all workers share the same start time (t=0).</div>
+              <div><b>Σ line</b>Sum of every worker's tokens per 200 ms bin over the shared axis — the combined throughput curve.</div>
+              <div><b>Aggregate decode</b>Median of the Σ line — the headline tok/s for the batch.</div>
+              <div><b>End-to-end Σ÷wall</b>Total tokens ÷ longest worker duration; includes ramp-in (TTFT) and staggered finishes, so it sits below the Σ median on short runs.</div>
+              <div><b>Mean worker</b>Average of the workers' own sustained decode rates.</div>
+            }
+          </div>
+        </section>
+
+        <div class="muted small provenance mono">
+          @if (d.modelLabel) {<span>entry: {{ d.modelLabel }} · </span>}@if (turnSource()) {<span>tokens: {{ turnSource() }} · </span>}@if (d.helper_model) {<span>text classified by: {{ d.helper_model }} · </span>}analysed {{ fmtDate(analysedDate()) }} · report v{{ d.version ?? '—' }} · session {{ d.session.slice(0, 8) }}@if (sessionName()) { · "{{ sessionName() }}" }
+        </div>
+      </div>
+    }
+
+    @if (tab() === 'transcript') {
+      <div class="legend card muted small">
+        <span>regimes:</span>
+        @for (r of legend(); track r) {
+          <span class="key"><span class="dot" [style.background]="color(r)"></span>{{ regimeLabel(r) }}</span>
+        }
+      </div>
+
+      @for (t of d.turns; track t.benchmarkId) {
+        <div class="turn card">
+          <div class="turn-head muted small">
+            turn {{ $index + 1 }} · {{ t.model }} · {{ fmtDate(t.createdAt) }}
+          </div>
+          @for (sec of t.sections; track sec.kind) {
+            <div class="section">
+              <div class="section-label muted small">{{ sec.kind === 'reasoning' ? 'Reasoning' : 'Answer' }}</div>
+              <div class="text">
+                @for (sp of spans(sec); track $index) {
+                  <span class="seg" [style.background]="background(sp.regime)" [style.color]="color(sp.regime)"
+                        [title]="regimeLabel(sp.regime)">{{ sp.text }}</span>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+    }
+  }
+</section>

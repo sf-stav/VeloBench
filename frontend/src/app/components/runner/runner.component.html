@@ -1,0 +1,90 @@
+<div class="runner">
+  <div class="head">
+    <h2>Concurrent runner</h2>
+    <span class="muted small">run ANY library test with N workers — steps execute in lockstep, aggregate report</span>
+  </div>
+
+  <div class="card start">
+    <div class="row">
+      <span class="lbl">model</span>
+      <span class="mono small">{{ ss.activeProvider()?.name || '—' }} · {{ ss.activeModel()?.id || 'pick model in the top bar' }}</span>
+    </div>
+    <div class="row">
+      <span class="lbl">test</span>
+      <select class="inp lab" [ngModel]="testId()" (ngModelChange)="testId.set($event)">
+        @for (t of runTests(); track t.id) {
+          <option [value]="t.id">{{ t.title }}{{ t.prebuilt ? ' ·' : '' }}</option>
+        }
+      </select>
+      <span class="lbl">workers</span>
+      <input class="inp tok" type="number" min="1" max="64" [ngModel]="workersN()" (ngModelChange)="workersN.set($event)" />
+      <span class="lbl">label</span>
+      <input class="inp lab" [ngModel]="label()" (ngModelChange)="label.set($event)" placeholder="defaults to the test title" />
+      <button class="btn primary" (click)="start()" [disabled]="starting() || !testId()">{{ starting() ? 'starting…' : 'Start run' }}</button>
+    </div>
+    @if (testId(); as tid) {
+      <div class="muted small">{{ testDesc(tid) }}</div>
+    }
+    @if (error()) {
+      <div class="err small">{{ error() }}</div>
+    }
+    <div class="muted small">Every worker executes the same step at the same time (step barrier): all workers finish a step before any starts the next. Each step lands in the shared session as its own turn, labelled with the step.</div>
+  </div>
+
+  @for (r of runs(); track r.id) {
+    <div class="card run">
+      <div class="run-head">
+        <span class="chip" [class.done]="r.finished">{{ r.finished ? 'FINISHED' : 'RUNNING' }}</span>
+        <span class="mono small strong">{{ r.label }}</span>
+        <span class="muted small mono">{{ r.model }}</span>
+        <span class="spacer"></span>
+        @if (!r.finished) {
+          <button class="btn danger" (click)="stop(r.id)">Stop</button>
+        }
+        <button class="btn" (click)="openReport(r.session)">Report</button>
+      </div>
+      @if (r.steps > 0) {
+        @if (r.error) {
+          <div class="run-error mono small" title="The test stopped because of this error">⛔ {{ r.error }}</div>
+        }
+        <div class="stepbar mono small">
+          <span class="strong">step {{ r.step || 1 }}/{{ r.steps }}</span>
+          <span class="dim">·</span>
+          <span>{{ r.step_title || 'starting…' }}</span>
+          <span class="dim">· barrier waits for all workers before the next step</span>
+        </div>
+      }
+      <div class="agg mono small">
+        <span>workers {{ r.workers }}</span>
+        <span>running {{ runningCount(r) }}</span>
+        <span>done {{ doneCount(r) }}</span>
+        <span class="strong">Σ {{ sumTokS(r).toFixed(1) }} tok/s</span>
+        <span>{{ fmtN(sumTokens(r)) }} tok total</span>
+      </div>
+      <div class="grid">
+        @for (w of r.snaps; track w.idx) {
+          <div class="wcard" [class.wrun]="w.state === 'streaming'" [class.wdone]="w.state === 'done'" [class.wfail]="w.state === 'failed'">
+            <div class="wline"><span class="widx mono">#{{ w.idx + 1 }}</span><span class="wstate small" [class]="'small ' + stateClass(w.state)">{{ w.state }}</span></div>
+            <div class="wstats mono">
+              <span class="strong">{{ (w.state === 'done' ? (w.final_tok_s ?? 0) : w.tok_s || 0).toFixed(1) }}</span> tok/s
+              <span class="dim">·</span>
+              {{ fmtN(maxTok(w)) }} tok
+            </div>
+            <div class="wstats mono dim">
+              @if (w.ttft_ms != null && w.ttft_ms > 0) {
+                ttft {{ (w.ttft_ms / 1000).toFixed(2) }} s
+              } @else {
+                ttft —
+              }
+              @if (w.error) {
+                <span class="werr">{{ w.error }}</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  } @empty {
+    <div class="card empty muted">No concurrent runs yet. Pick a model above and start one.</div>
+  }
+</div>
