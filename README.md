@@ -156,3 +156,9 @@ Then: Settings → add a provider + model → chat → run a built-in test → r
 ## License
 
 AGPL-3.0. See [LICENSE](LICENSE).
+
+## Thanks
+
+Thanks to the people behind **[llama-benchy](https://github.com/eugr/llama-benchy)** for the inspiration
+and some of the ideas that shaped VeloBenchmark.
+
