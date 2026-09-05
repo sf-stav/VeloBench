@@ -6,6 +6,10 @@
 
 **A single-binary LLM benchmarking and live-stats console, used entirely from your browser.**
 
+<p align="center">
+  <img src="assets/videos/vb_github.gif" alt="VeloBenchmark demo" width="600">
+</p>
+
 VeloBenchmark (`velobench`) is a from-scratch Rust server that packs a full web UI into one binary.
 Point it at any OpenAI-compatible endpoint and you get the whole loop in a browser: chat with a model
 and watch accurate decode-speed and latency instruments in real time → build test suites (prose, code,
