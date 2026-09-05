@@ -198,6 +198,7 @@ export class ChatSessionService {
       reset?: boolean;
       resetStats?: boolean;
       regimes?: boolean;
+      reasoning?: { enabled: boolean; effort: string };
     },
   ): void {
     this.streaming.set(true);
@@ -221,8 +222,10 @@ export class ChatSessionService {
         images: m.images ?? [],
         fillTokens: m.fillTokens ?? 0,
       })),
-      reasoningEnabled: !!mc.reasoning_enabled,
-      reasoningEffort: mc.reasoning_enabled ? (mc.reasoning_effort || '') : '',
+      reasoningEnabled: opts?.reasoning ? opts.reasoning.enabled : !!mc.reasoning_enabled,
+      reasoningEffort: opts?.reasoning
+        ? (opts.reasoning.enabled ? opts.reasoning.effort : '')
+        : (mc.reasoning_enabled ? (mc.reasoning_effort || '') : ''),
       overrides: (opts?.overrides ?? (mc.params || []).map((p) => ({ key: p.key, value: String(p.value) })))
         .map((o) => new velobench.ParamOverride({ key: o.key, value: String(o.value) })),
       maxStatsTokens: this.ss.settings().max_stats_tokens,
@@ -500,6 +503,11 @@ export class ChatSessionService {
       if (st.test.maxTokens != null) overrides.push({ key: 'max_tokens', value: String(st.test.maxTokens) });
       if ((isBench || isImage || isPrompt) && (step.tg || 0) > 0)
         overrides.push({ key: 'max_tokens', value: String(step.tg) });
+      // Per-step reasoning override ('' inherit, 'off', or an effort level).
+      const stepReasoning = (step.reasoningEffort || '').trim();
+      const reasoning = stepReasoning
+        ? { enabled: stepReasoning !== 'off', effort: stepReasoning === 'off' ? '' : stepReasoning }
+        : undefined;
       const resetStats = this.pendingStatsReset;
       this.pendingStatsReset = false;
       this.run(
@@ -513,6 +521,7 @@ export class ChatSessionService {
           label: st.test.title,
           section: st.section,
           overrides,
+          reasoning,
           // No session reset: bench requests are single-message (stateless),
           // and resetting would split the test across VeloBenchmark sessions.
           reset: false,

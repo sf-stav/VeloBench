@@ -3,6 +3,17 @@
 High-level release notes for VeloBenchmark. Minor bug fixes and small optimizations are grouped under
 generic language where they aren't individually notable.
 
+## v0.1.1 — Per-step reasoning override, test framework improvements
+
+- **Per-step reasoning override.** Each test step can now set its own reasoning effort
+  (`''` inherit / `off` / an effort level). It's honored by the chat path and the concurrent runner,
+  with a reasoning dropdown in the test editor for prompt and image steps and an `r:<effort>` badge in
+  the step header.
+- **Classification balance.** Every prompt now asks for ~300 tokens of its regime, keeping the regime
+  split comparable across turns.
+- **JSON-mode fixes.** The lossy JSON wire form is fixed (now preserves `tg` / `depth` / `pp` /
+  `image` / `prompt` / `reasoningEffort`). Minor bug fixes and optimizations.
+
 ## v0.1.0 — Initial release
 
 A single-binary LLM benchmarking and live-stats console, used entirely from a browser.

@@ -53,6 +53,7 @@
 .badge.k-prm { background: rgba(63, 182, 139, 0.12); color: #7fd8b8; border-color: rgba(63, 182, 139, 0.4); }
 .badge.k-ctx { background: rgba(246, 200, 76, 0.12); color: #e8cf8a; border-color: rgba(246, 200, 76, 0.4); }
 .badge.k-img { background: rgba(186, 104, 255, 0.14); color: #d3a8ff; border-color: rgba(186, 104, 255, 0.4); }
+.badge.r-badge { background: rgba(255, 158, 79, 0.12); color: #ffc08a; border-color: rgba(255, 158, 79, 0.4); }
 .ctxrow { display: flex; align-items: center; gap: 8px; }
 .ctxrow select { width: 90px; }
 .secrow { display: flex; align-items: center; gap: 12px; }

@@ -96,10 +96,10 @@ pub struct ConcRun {
 #[derive(Clone, Debug)]
 pub enum PlanStep {
     Marker { title: String },
-    Req { title: String, fill_tokens: u32, tg: u32, exact_tg: bool, temperature: Option<f64> },
+    Req { title: String, fill_tokens: u32, tg: u32, exact_tg: bool, temperature: Option<f64>, reasoning_effort: String },
     /// Image step: ONE vision request per worker (image + prompt), then the
     /// barrier applies as usual. A vision error STOPS the whole test.
-    Img { title: String, image: String, prompt: String, tg: u32 },
+    Img { title: String, image: String, prompt: String, tg: u32, reasoning_effort: String },
 }
 
 #[derive(Default)]
@@ -196,6 +196,7 @@ fn plan_from_test(t: &crate::tests::TestDef) -> Vec<PlanStep> {
                 tg: s.tg.max(1),
                 exact_tg: s.exact_tg,
                 temperature: t.temperature,
+                reasoning_effort: s.reasoning_effort.clone(),
             }),
             "context" => out.push(PlanStep::Req {
                 title: if phase.is_empty() { format!("fill {}K", s.k) } else { phase.clone() },
@@ -203,6 +204,7 @@ fn plan_from_test(t: &crate::tests::TestDef) -> Vec<PlanStep> {
                 tg: s.tg.max(1),
                 exact_tg: s.exact_tg,
                 temperature: t.temperature,
+                reasoning_effort: s.reasoning_effort.clone(),
             }),
             "bench" => out.push(PlanStep::Req {
                 title: if phase.is_empty() {
@@ -214,6 +216,7 @@ fn plan_from_test(t: &crate::tests::TestDef) -> Vec<PlanStep> {
                 tg: s.tg.max(1),
                 exact_tg: s.exact_tg,
                 temperature: t.temperature,
+                reasoning_effort: s.reasoning_effort.clone(),
             }),
             "image" => out.push(PlanStep::Img {
                 title: if phase.is_empty() { "image".into() } else { phase.clone() },
@@ -224,6 +227,7 @@ fn plan_from_test(t: &crate::tests::TestDef) -> Vec<PlanStep> {
                     s.prompt.clone()
                 },
                 tg: if s.tg > 0 { s.tg } else { 512 },
+                reasoning_effort: s.reasoning_effort.clone(),
             }),
             _ => {}
         }
@@ -285,6 +289,7 @@ pub async fn start(st: &AppState, req: StartConc) -> Result<ConcRun, String> {
                 tg,
                 exact_tg: false,
                 temperature: None,
+                reasoning_effort: String::new(),
             }],
             String::new(),
             title.clone(),
@@ -381,10 +386,10 @@ async fn orchestrator(st: AppState, run_id: String, session: String) {
             PlanStep::Marker { title } => {
                 st.conc.update(&run_id, |r| r.step_title = title.clone());
             }
-            PlanStep::Req { title, fill_tokens, tg, exact_tg, temperature } => {
+            PlanStep::Req { title, fill_tokens, tg, exact_tg, temperature, reasoning_effort } => {
                 req_step += 1;
-                let (title, fill_tokens, tg, exact_tg, temperature) =
-                    (title.clone(), *fill_tokens, *tg, *exact_tg, *temperature);
+                let (title, fill_tokens, tg, exact_tg, temperature, reasoning_effort) =
+                    (title.clone(), *fill_tokens, *tg, *exact_tg, *temperature, reasoning_effort.clone());
                 st.conc.update(&run_id, |r| {
                     r.step = req_step;
                     r.step_title = title.clone();
@@ -420,14 +425,15 @@ async fn orchestrator(st: AppState, run_id: String, session: String) {
                         temperature,
                         Vec::new(),
                         None,
+                        reasoning_effort.clone(),
                     ));
                 }
                 futures::future::join_all(futs).await;
             }
-            PlanStep::Img { title, image, prompt, tg } => {
+            PlanStep::Img { title, image, prompt, tg, reasoning_effort } => {
                 req_step += 1;
-                let (title, image, prompt, tg) =
-                    (title.clone(), image.clone(), prompt.clone(), *tg);
+                let (title, image, prompt, tg, reasoning_effort) =
+                    (title.clone(), image.clone(), prompt.clone(), *tg, reasoning_effort.clone());
                 st.conc.update(&run_id, |r| {
                     r.step = req_step;
                     r.step_title = title.clone();
@@ -475,6 +481,7 @@ async fn orchestrator(st: AppState, run_id: String, session: String) {
                         None,
                         vec![data_url.clone()],
                         Some(prompt.clone()),
+                        reasoning_effort.clone(),
                     ));
                 }
                 let results = futures::future::join_all(futs).await;
@@ -514,6 +521,9 @@ async fn run_step(
     // content becomes `content_override` instead of the corpus fill.
     images: Vec<String>,
     content_override: Option<String>,
+    // Per-step reasoning override: "" inherits the model config, "off"
+    // disables reasoning, anything else is the effort level.
+    reasoning_effort: String,
 ) -> Result<(), String> {
     let (provider_id, model, model_uid, section, turn_label) = {
         let run = match st.conc.get(&run_id) {
@@ -592,14 +602,22 @@ async fn run_step(
             images: images.clone(),
             fill_tokens: if images.is_empty() { fill_tokens } else { 0 },
         }],
-        reasoning_enabled: model_cfg
-            .as_ref()
-            .map(|m| m.reasoning_enabled)
-            .unwrap_or(false),
-        reasoning_effort: model_cfg
-            .as_ref()
-            .and_then(|m| m.reasoning_effort.clone())
-            .unwrap_or_default(),
+        reasoning_enabled: {
+            let cfg_on = model_cfg.as_ref().map(|m| m.reasoning_enabled).unwrap_or(false);
+            match reasoning_effort.as_str() {
+                "off" => false,
+                "" => cfg_on,
+                _ => true,
+            }
+        },
+        reasoning_effort: match reasoning_effort.as_str() {
+            "" => model_cfg
+                .as_ref()
+                .and_then(|m| m.reasoning_effort.clone())
+                .unwrap_or_default(),
+            "off" => String::new(),
+            v => v.to_string(),
+        },
         overrides: {
             let mut ov = vec![ParamOverride {
                 key: "max_tokens".into(),

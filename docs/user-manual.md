@@ -113,7 +113,7 @@ The Tests page (🧪) lists built-in suites and your own tests.
 | Step | Purpose |
 |------|---------|
 | **Section** | Names a sub-test in progress/reports. With **Reset context** it clears the conversation (a fresh sub-test); without it, it is just a marker. When "Treat LLM sessions as regimes" is on, section titles become the regime names in reports. |
-| **Prompt** | Sends text to the model, as-is. Optional per-step generation budget (`tg`). |
+| **Prompt** | Sends text to the model, as-is. Optional per-step generation budget (`tg`) and a **per-step reasoning override** — *inherit* (model config), *off*, or a forced effort level (low/medium/high/xhigh). |
 | **Context** | Fills the context with an exact lorem-ipsum payload (chosen in K tokens) before the next prompt — cumulative context tests stay exact. |
 | **Bench** | A fixed-shape run: ONE request with `depth` corpus tokens + `pp` measured prompt tokens, generating `tg` tokens. `exact-tg` forces the full generation (no early stop). Independent of history. |
 | **Image** | A vision request: pick one of the embedded test images (dropdown lists them **by size**) and write the prompt (default: *"Please describe this image."*). The image is sent to the model; the turn streams and records like any other. If the model rejects the image (no vision support, provider error), **the test stops and shows the error**. |

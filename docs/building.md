@@ -28,6 +28,9 @@ Environment overrides: `VELOBENCHMARK_PORT`, `VELOBENCHMARK_DIR` (default
 
 ## Publishing prebuilt binaries
 
+> A ready-to-paste release-session brief lives in
+> [RELEASING.md](RELEASING.md).
+
 Release artifacts are plain tarballs named
 `velobenchmark-<os>-<arch>.tar.gz` (containing the `velobench` binary) —
 the installer looks for exactly that name on the latest release. Three ways

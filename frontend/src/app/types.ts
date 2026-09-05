@@ -349,6 +349,9 @@ export interface TestStep {
   image?: string;
   /** Image steps: prompt sent with the image. */
   prompt?: string;
+  /** Per-step reasoning override: '' inherits the model config, 'off'
+   *  disables reasoning, otherwise the effort level (low/medium/high/…). */
+  reasoningEffort?: string;
   /** Bench steps (fixed-shape run): corpus tokens of context depth. */
   depth?: number;
   /** Bench steps: measured prompt tokens on top of the depth. */

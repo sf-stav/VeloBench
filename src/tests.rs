@@ -44,6 +44,11 @@ pub struct TestStep {
     /// Image steps: prompt accompanying the image.
     #[serde(default)]
     pub prompt: String,
+    /// Per-step reasoning override: "" inherits the model config, "off"
+    /// disables reasoning, any other value is sent as the effort level
+    /// (low / medium / high / xhigh / …).
+    #[serde(default, rename = "reasoningEffort")]
+    pub reasoning_effort: String,
     /// Sections only: when true the section starts a new LLM session (clears
     /// the conversation history). When false it is just a progress marker and
     /// the conversation continues.
@@ -162,16 +167,18 @@ pub fn prebuilt() -> Vec<TestDef> {
         steps,
     };
     // Built-in sections reset the context: each one is a separate sub-test.
-    let section = |t: &str| TestStep { kind: "section".into(), title: t.into(), text: String::new(), k: 0, reset: true, depth: 0, pp: 0, tg: 0, exact_tg: false, image: String::new(), prompt: String::new() };
-    let prompt = |t: &str| TestStep { kind: "prompt".into(), title: String::new(), text: t.into(), k: 0, reset: false, depth: 0, pp: 0, tg: 0, exact_tg: false, image: String::new(), prompt: String::new() };
+    let section = |t: &str| TestStep { kind: "section".into(), title: t.into(), text: String::new(), k: 0, reset: true, depth: 0, pp: 0, tg: 0, exact_tg: false, image: String::new(), prompt: String::new(), reasoning_effort: String::new() };
+    let prompt = |t: &str| TestStep { kind: "prompt".into(), title: String::new(), text: t.into(), k: 0, reset: false, depth: 0, pp: 0, tg: 0, exact_tg: false, image: String::new(), prompt: String::new(), reasoning_effort: String::new() };
     // Prompt step with a generation budget (max_tokens override).
-    let prompt_tg = |t: &str, tg: u32| TestStep { kind: "prompt".into(), title: String::new(), text: t.into(), k: 0, reset: false, depth: 0, pp: 0, tg, exact_tg: false, image: String::new(), prompt: String::new() };
+    let prompt_tg = |t: &str, tg: u32| TestStep { kind: "prompt".into(), title: String::new(), text: t.into(), k: 0, reset: false, depth: 0, pp: 0, tg, exact_tg: false, image: String::new(), prompt: String::new(), reasoning_effort: String::new() };
     // Vision step: ONE image (from the embedded test images) + prompt.
-    let image = |name: &str, prompt: &str, tg: u32| TestStep { kind: "image".into(), title: String::new(), text: String::new(), k: 0, reset: false, depth: 0, pp: 0, tg, exact_tg: false, image: name.into(), prompt: prompt.into() };
-    let context = |k: u32| TestStep { kind: "context".into(), title: String::new(), text: String::new(), k, reset: false, depth: 0, pp: 0, tg: 0, exact_tg: false, image: String::new(), prompt: String::new() };
+    let image = |name: &str, prompt: &str, tg: u32| TestStep { kind: "image".into(), title: String::new(), text: String::new(), k: 0, reset: false, depth: 0, pp: 0, tg, exact_tg: false, image: name.into(), prompt: prompt.into(), reasoning_effort: String::new() };
+    // Prompt step with generation budget AND a reasoning override.
+    let prompt_effort = |t: &str, tg: u32, effort: &str| TestStep { kind: "prompt".into(), title: String::new(), text: t.into(), k: 0, reset: false, depth: 0, pp: 0, tg, exact_tg: false, image: String::new(), prompt: String::new(), reasoning_effort: effort.into() };
+    let context = |k: u32| TestStep { kind: "context".into(), title: String::new(), text: String::new(), k, reset: false, depth: 0, pp: 0, tg: 0, exact_tg: false, image: String::new(), prompt: String::new(), reasoning_effort: String::new() };
     // Fixed-shape run: one request with `depth` corpus tokens of
     // context + `pp` measured prompt tokens, generating `tg` tokens.
-    let bench = |depth: u32, pp: u32, tg: u32| TestStep { kind: "bench".into(), title: String::new(), text: String::new(), k: 0, reset: false, depth, pp, tg, exact_tg: false, image: String::new(), prompt: String::new() };
+    let bench = |depth: u32, pp: u32, tg: u32| TestStep { kind: "bench".into(), title: String::new(), text: String::new(), k: 0, reset: false, depth, pp, tg, exact_tg: false, image: String::new(), prompt: String::new(), reasoning_effort: String::new() };
     vec![
         mk(
             "prebuilt-sanity",
@@ -359,6 +366,58 @@ pub fn prebuilt() -> Vec<TestDef> {
                 prompt_tg(
                     "Please write a 1000 word scifi story with lots of aliens and tech.",
                     2048,
+                ),
+            ],
+        ),
+        // ---- AI-assisted classification probe ------------------------------
+        // One turn per regime with equal token budgets: the report's regime
+        // split should come out roughly even, which makes this the reference
+        // suite for checking the helper-model classification. Best run as a
+        // single stream from the Tests page (the Runner measures shapes, not
+        // prompt text).
+        mk(
+            "prebuilt-classification-balance",
+            "Classification · regime balance",
+            "Multi-turn probe for the AI-assisted output classification: seven turns, one regime each — json, code, math, prose, chat, table, reasoning — with per-turn reasoning overrides (off for the structured/prose turns, low for math and deliberation) and generation budgets sized so every turn still produces visible content. Run it single-stream from the Tests page, then open the session's analysis.",
+            false,
+            None,
+            None,
+            vec![
+                section("Regime balance"),
+                prompt_effort(
+                    "Output ONLY a valid JSON document and nothing else: a catalog of 12 books with the fields title, author, year, isbn and tags (an array of strings). No markdown fences, no commentary, no explanations — raw JSON from the first character to the last. Produce approximately 300 tokens of this type of output.",
+                    800,
+                    "off",
+                ),
+                prompt_effort(
+                    "Output ONLY a single ANSI C source file implementing three sorting algorithms (quicksort, mergesort, heapsort) plus a small main() that demonstrates them. No comments, no analysis, no introduction, no summary — code only. Produce approximately 300 tokens of this type of output.",
+                    800,
+                    "off",
+                ),
+                prompt_effort(
+                    "Output ONLY mathematical proofs and equations — no prose, no explanations. Prove that the square root of 2 is irrational, that there are infinitely many primes, and that the sum of the first n integers is n(n+1)/2. Use LaTeX-style notation in markdown. Produce approximately 300 tokens of this type of output.",
+                    1200,
+                    "low",
+                ),
+                prompt_effort(
+                    "Write a continuous piece of narrative prose about a lighthouse keeper's last night before retirement. Rich, flowing literary sentences — no lists, no headings, no code, no tables. Produce approximately 300 tokens of this type of output.",
+                    800,
+                    "off",
+                ),
+                prompt_effort(
+                    "Answer as if casually chatting with a friend: what kind of coffee suits a rainy Tuesday morning and why? Keep it light and conversational, two short paragraphs, no lists or structure. Produce approximately 300 tokens of this type of output.",
+                    800,
+                    "off",
+                ),
+                prompt_effort(
+                    "Output ONLY a markdown table comparing five programming languages across the columns name, year, typing, paradigm and typical use. Nothing else — no introduction, no explanation. Produce approximately 300 tokens of this type of output.",
+                    800,
+                    "off",
+                ),
+                prompt_effort(
+                    "Deliberate step by step, in careful analytical prose, about whether a ladder has an odd number of rungs if you always alternate feet while climbing and end with both feet on the top rung. Show your full reasoning process in the answer itself. Produce approximately 300 tokens of this type of output.",
+                    1200,
+                    "low",
                 ),
             ],
         ),

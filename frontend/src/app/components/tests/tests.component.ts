@@ -278,15 +278,26 @@ export class TestsComponent implements OnInit {
       prebuilt: !!t.prebuilt,
       favorite: !!t.favorite,
       createdAt: t.createdAt ?? '',
-      steps: t.steps.map((s, i) =>
-        s.type === 'section'
-          // The first section starts the run — the context is fresh by
-          // definition, so its reset flag is ignored and normalized off.
-          ? { type: 'section', title: s.title ?? '', reset: i > 0 && !!s.reset }
-          : s.type === 'prompt'
-            ? { type: 'prompt', text: s.text ?? '' }
-            : { type: 'context', k: s.k ?? 0 },
-      ),
+      steps: t.steps.map((s, i) => {
+        // The first section starts the run — the context is fresh by
+        // definition, so its reset flag is ignored and normalized off.
+        if (s.type === 'section') return { type: 'section', title: s.title ?? '', reset: i > 0 && !!s.reset };
+        const base: Record<string, unknown> = { type: s.type };
+        if (s.title != null) base['title'] = s.title;
+        if (s.type === 'prompt') base['text'] = s.text ?? '';
+        if (s.type === 'context') base['k'] = s.k ?? 0;
+        if (s.type === 'bench') {
+          base['depth'] = s.depth ?? 0;
+          base['pp'] = s.pp ?? 0;
+        }
+        if (s.type === 'image') {
+          base['image'] = s.image ?? '';
+          base['prompt'] = s.prompt ?? '';
+        }
+        if (s.tg) base['tg'] = s.tg;
+        if (s.reasoningEffort) base['reasoningEffort'] = s.reasoningEffort;
+        return base;
+      }),
     };
   }
 
@@ -313,6 +324,12 @@ export class TestsComponent implements OnInit {
             title: s.title != null ? String(s.title) : undefined,
             text: s.text != null ? String(s.text) : undefined,
             k: s.k != null ? Number(s.k) : undefined,
+            depth: s.depth != null ? Number(s.depth) : undefined,
+            pp: s.pp != null ? Number(s.pp) : undefined,
+            tg: s.tg != null ? Number(s.tg) : undefined,
+            image: s.image != null ? String(s.image) : undefined,
+            prompt: s.prompt != null ? String(s.prompt) : undefined,
+            reasoningEffort: s.reasoningEffort != null ? String(s.reasoningEffort) : undefined,
             reset: !!s.reset,
           }))
         : [],

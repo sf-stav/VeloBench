@@ -110,6 +110,9 @@
               <div class="step-head">
                 <span class="badge kind" [class.k-sec]="s.type === 'section'" [class.k-prm]="s.type === 'prompt'" [class.k-ctx]="s.type === 'context'" [class.k-img]="s.type === 'image'">{{ stepLabel(s) }}</span>
                 <span class="muted small mono">{{ $index + 1 }}</span>
+                @if (s.reasoningEffort) {
+                  <span class="badge r-badge mono" [title]="'Reasoning override: ' + s.reasoningEffort">r:{{ s.reasoningEffort }}</span>
+                }
                 @if ($index > 0 && !readonly_()) {
                   <div class="step-actions">
                     <button class="mini" (click)="moveStep($index, -1)" title="Move up" [disabled]="$index === 1">↑</button>
@@ -133,6 +136,17 @@
                 </div>
               } @else if (s.type === 'prompt') {
                 <textarea class="inp" rows="2" [ngModel]="s.text" (ngModelChange)="updateStep($index, { text: $event })" [disabled]="readonly_()" placeholder="Prompt sent to the model as-is"></textarea>
+                <div class="secrow" title="Per-step reasoning override. 'Inherit' uses the model's configured reasoning; 'off' disables it; a level forces that effort.">
+                  <span class="muted small">reasoning</span>
+                  <select class="inp" style="max-width: 140px" [ngModel]="s.reasoningEffort || ''" (ngModelChange)="updateStep($index, { reasoningEffort: $event })" [disabled]="readonly_()">
+                    <option value="">inherit model config</option>
+                    <option value="off">off</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="xhigh">xhigh</option>
+                  </select>
+                </div>
               } @else if (s.type === 'image') {
                 <div class="secrow">
                   <select class="inp" [ngModel]="s.image" (ngModelChange)="updateStep($index, { image: $event })" [disabled]="readonly_()">
@@ -143,6 +157,17 @@
                   </select>
                 </div>
                 <textarea class="inp" rows="2" [ngModel]="s.prompt" (ngModelChange)="updateStep($index, { prompt: $event })" [disabled]="readonly_()" placeholder="Prompt sent with the image"></textarea>
+                <div class="secrow" title="Per-step reasoning override. 'Inherit' uses the model's configured reasoning; 'off' disables it; a level forces that effort.">
+                  <span class="muted small">reasoning</span>
+                  <select class="inp" style="max-width: 140px" [ngModel]="s.reasoningEffort || ''" (ngModelChange)="updateStep($index, { reasoningEffort: $event })" [disabled]="readonly_()">
+                    <option value="">inherit model config</option>
+                    <option value="off">off</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="xhigh">xhigh</option>
+                  </select>
+                </div>
               } @else if (s.type === 'bench') {
                 <div class="ctxrow" title="Fixed-shape run: ONE request with depth corpus tokens + pp prompt tokens, generating tg tokens">
                   <span class="muted small">depth</span>
@@ -153,6 +178,15 @@
                   <input class="inp" type="number" min="1" [ngModel]="s.tg" (ngModelChange)="updateStep($index, { tg: toNum($event) })" [disabled]="readonly_()" />
                   <span class="muted small mono">{{ (s.depth || 0) + (s.pp || 0) }} tok in · {{ s.tg || 0 }} out</span>
                 </div>
+                  <span class="muted small">reasoning</span>
+                  <select class="inp" style="max-width: 140px" [ngModel]="s.reasoningEffort || ''" (ngModelChange)="updateStep($index, { reasoningEffort: $event })" [disabled]="readonly_()">
+                    <option value="">inherit model config</option>
+                    <option value="off">off</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="xhigh">xhigh</option>
+                  </select>
               } @else {
                 <div class="ctxrow">
                   <span class="muted small">Fill context with lorem ipsum ·</span>
@@ -163,6 +197,15 @@
                   </select>
                   <span class="muted small">tokens (K = 1024)</span>
                 </div>
+                  <span class="muted small">reasoning</span>
+                  <select class="inp" style="max-width: 140px" [ngModel]="s.reasoningEffort || ''" (ngModelChange)="updateStep($index, { reasoningEffort: $event })" [disabled]="readonly_()">
+                    <option value="">inherit model config</option>
+                    <option value="off">off</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="xhigh">xhigh</option>
+                  </select>
               }
             </div>
           }
