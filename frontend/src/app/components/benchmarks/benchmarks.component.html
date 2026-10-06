@@ -122,7 +122,7 @@
             </div>
             <div class="muted small">
               {{ g.turns.length }} turn(s) · {{ fmtDate(g.createdAt) }} · <span class="mono" title="{{ g.session }}">{{ shortId(g.session) }}</span>
-              @if (overallTokS(g); as r) {
+              @if (g.overallTokS; as r) {
                 · <span class="mono" title="Overall decode rate — total output tokens ÷ total decode time across turns">{{ r.toFixed(1) }} tok/s</span>
               }
             </div>
@@ -177,7 +177,7 @@
           }
         </button>
 
-        @let strip = stripFor(g);
+        @let strip = g.strip;
         @if (strip.length) {
           <div class="regime-strip" [title]="stripTitle(g)">
             @for (s of strip; track s.regime) {
@@ -198,13 +198,13 @@
             @for (t of g.turns; track t.id) {
               <div class="turn">
                 <div class="muted small turn-head">
-                  turn {{ $index + 1 }} · {{ fmtDate(t.created_at) }} · TTFT {{ fmtMs(t.stats.ttft_ms ?? null) }}
-                  · {{ t.stats.completion_tokens || t.stats.token_events.length }} tok
+                  turn {{ $index + 1 }} · {{ fmtDate(t.created_at) }} · TTFT {{ fmtMs(t.ttft_ms) }}
+                  · {{ t.tokens }} tok
                 </div>
                 <div class="detail-grid">
-                  <span class="muted">Prompt</span><span class="mono">{{ truncate(t.prompt) }}</span>
-                  <span class="muted">Output</span><span>{{ truncate(t.output) }}</span>
-                  <span class="muted">Reasoning</span><span>{{ truncate(t.reasoning) }}</span>
+                  <span class="muted">Prompt</span><span class="mono">{{ t.prompt }}</span>
+                  <span class="muted">Output</span><span>{{ t.output }}</span>
+                  <span class="muted">Reasoning</span><span>{{ t.reasoning }}</span>
                 </div>
               </div>
             }

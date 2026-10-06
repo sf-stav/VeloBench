@@ -1,7 +1,7 @@
 # Telemetry setup
 
-VeloBenchmarkmark can act as a **live telemetry dashboard** for a serving engine
-that emits OpenTelemetry. The engine POSTs OTLP/HTTP-JSON to VeloBenchmarkmark's
+VeloBenchmark can act as a **live telemetry dashboard** for a serving engine
+that emits OpenTelemetry. The engine POSTs OTLP/HTTP-JSON to VeloBenchmark's
 built-in receiver, and the Telemetry page turns that into per-stream live
 panels — streaming text, decode speed, latency breakdown — plus one-click
 recording into a normal session report.
@@ -10,12 +10,12 @@ recording into a normal session report.
 
 There are two sides:
 
-1. **The receiver** — VeloBenchmarkmark itself (Settings → Telemetry).
+1. **The receiver** — VeloBenchmark itself (Settings → Telemetry).
 2. **The emitter** — your serving engine's `--otel-*` flags, documented below.
 
 ---
 
-## 1. The receiver (VeloBenchmarkmark side)
+## 1. The receiver (VeloBenchmark side)
 
 Open **Settings → Telemetry**:
 
@@ -47,14 +47,14 @@ when the first one is present — that's the on/off switch.
 
 Enables the emitter: the engine POSTs OTLP/HTTP-JSON to `<URL>/v1/logs`
 (batched generation telemetry) and has `<URL>/v1/metrics` wired for Live
-Stats. Point it at VeloBenchmarkmark:
+Stats. Point it at VeloBenchmark:
 
 ```
 --otel-endpoint http://<velobench-host>:9381
 ```
 
 (4318 is the OTLP/HTTP convention port and the engine's default if you omit
-the port — VeloBenchmarkmark's receiver uses 9381, so spell it out.)
+the port — VeloBenchmark's receiver uses 9381, so spell it out.)
 
 - **Absent = OFF = zero cost.** The whole emitter — ring, session registry,
   sender task — doesn't exist; every hook in the serving path compiles down
@@ -149,7 +149,7 @@ anything.
 --server A: --otel-endpoint http://rx:4318 --otel-topology box-1
 --server B: --otel-endpoint http://rx:4318 --otel-topology box-2
 
-# Point an engine at VeloBenchmarkmark's receiver
+# Point an engine at VeloBenchmark's receiver
 --otel-endpoint http://<velobench-host>:9381
 ```
 
@@ -157,7 +157,7 @@ anything.
 
 With the engine running and the receiver enabled:
 
-1. Open **Telemetry** in VeloBenchmarkmark.
+1. Open **Telemetry** in VeloBenchmark.
 2. Start a generation on the engine (chat, benchmark client — anything).
 3. A panel appears per stream: the text feed, the stats deck (decode rate,
    responsiveness, progress, reasoning/output split) and the full chart set,

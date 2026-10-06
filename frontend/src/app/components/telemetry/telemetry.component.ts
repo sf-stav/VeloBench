@@ -1,5 +1,5 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
-import { ChartsService } from '../../services/charts.service';
+import { ChartsService, HistogramData } from '../../services/charts.service';
 import { ApiService } from '../../services/api.service';
 import { LiveSample } from '../../types';
 
@@ -20,10 +20,14 @@ interface TelPanel {
     reasoningTokens: number; contentTokens: number;
   };
   samples: LiveSample[];
-  latencies: number[];
+  rateHist: HistogramData | null;
+  latHist: HistogramData | null;
   acceptance: Array<{ t: number; rate: number }>;
   specDepth: Array<{ depth: number; count: number }>;
   clusters: { bimodal: boolean; split: number } | null;
+  /** Server-derived display values. */
+  itlP90: number;
+  stability: string;
   recording: { elapsedS: number; tokens: number; maxS: number; maxTokens: number } | null;
 }
 
@@ -36,24 +40,6 @@ interface TelFrame {
     chatLines: number; recordMaxS: number; recordMaxTokens: number; statsMaxTokens: number;
   };
   streams: Array<Partial<TelPanel> & { full?: boolean; delta?: string }>;
-}
-
-const ACCEPTANCE_MA_PERIOD = 27;
-
-function movingAverage(
-  points: Array<{ t: number; rate: number }>,
-  period: number,
-): Array<{ t: number; rate: number }> {
-  if (points.length < 2) return points;
-  const out: Array<{ t: number; rate: number }> = [];
-  let sum = 0;
-  for (let i = 0; i < points.length; i++) {
-    sum += points[i].rate;
-    if (i >= period) sum -= points[i - period].rate;
-    const n = Math.min(i + 1, period);
-    out.push({ t: points[i].t, rate: sum / n });
-  }
-  return out;
 }
 
 /** Telemetry page: one panel per received stream. Push model, identical in
@@ -129,10 +115,13 @@ export class TelemetryComponent implements OnInit, OnDestroy {
         text,
         stats: s.stats as TelPanel['stats'],
         samples: (s.samples as TelPanel['samples']) || [],
-        latencies: s.latencies || [],
+        rateHist: s.rateHist ?? null,
+        latHist: s.latHist ?? null,
         acceptance: s.acceptance || [],
         specDepth: s.specDepth || [],
         clusters: s.clusters ?? null,
+        itlP90: s.itlP90 ?? 0,
+        stability: s.stability ?? '—',
         recording: s.recording ?? null,
       });
     }
@@ -160,28 +149,25 @@ export class TelemetryComponent implements OnInit, OnDestroy {
     }
     const rh = q('rh-');
     if (rh) {
-      this.charts.drawHistogram(rh, p.samples.map((s) => s.tok_s).filter((v) => v > 0), {
+      this.charts.drawHistogram(rh, p.rateHist, {
         color: '#4C86FF',
         fmt: (v) => v.toFixed(1),
-        binWidth: 1,
         emptyLabel,
       });
     }
     const lh = q('lh-');
     if (lh) {
-      this.charts.drawHistogram(lh, p.latencies, {
+      this.charts.drawHistogram(lh, p.latHist, {
         fmt: (v) => v.toFixed(0),
         emptyLabel,
         gradient: 'greenred',
         splitLine: p.clusters?.bimodal ? p.clusters.split : undefined,
-        binWidth: 0.5,
-        maxBins: 200,
         logY: true,
       });
     }
     const ac = q('ac-');
     if (ac) {
-      const acc = specNote ? [] : movingAverage(p.acceptance, ACCEPTANCE_MA_PERIOD).slice(ACCEPTANCE_MA_PERIOD - 1);
+      const acc = specNote ? [] : p.acceptance;
       this.charts.drawRateLine(ac, acc, { color: '#4C86FF', emptyLabel: specNote ?? emptyLabel });
     }
     const sd = q('sd-');
@@ -193,13 +179,11 @@ export class TelemetryComponent implements OnInit, OnDestroy {
   }
 
   itlP90(p: TelPanel): number | null {
-    if (p.latencies.length < 8) return null;
-    const s = [...p.latencies].sort((a, b) => a - b);
-    return s[Math.min(s.length - 1, Math.floor(s.length * 0.9))];
+    return p.itlP90 > 0 ? p.itlP90 : null;
   }
 
   stabilityPct(p: TelPanel): string {
-    return p.stats.max > 0 ? Math.round((p.stats.median / p.stats.max) * 100) + '%' : '—';
+    return p.stability;
   }
 
   fmtMs(ms: number | null): string {

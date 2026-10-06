@@ -126,18 +126,40 @@ message LiveStat {
 
 // Computed stats snapshot (session aggregate). Sent periodically while streaming
 // and once more at the end.
+// A pre-binned distribution: bins span [min, max] evenly, counts per bin.
+message Histogram {
+  double min = 1;
+  double max = 2;
+  repeated uint32 counts = 3;
+}
+
 message Stats {
+  reserved 2, 9; // latencies / hist_max: the server now ships binned histograms
   repeated DecodePoint decode = 1;
-  repeated double latencies = 2;
   LiveStat live = 3;
   ClusterResult clusters = 4;
   repeated AcceptancePoint acceptance = 5;
   repeated SpecDepthPoint spec_depth = 6;
   repeated Regime regimes = 7;
   string category = 8;
-  // Robust upper bound (ms) for the latency histogram — a high percentile so the
-  // graph isn't zoomed out by a few extreme stall values.
-  double hist_max = 9;
+  // Display series/labels derived server-side so the UI only renders:
+  // acceptance curve smoothed (27-sample trailing mean, warm-up dropped).
+  repeated AcceptancePoint acceptance_ma = 10;
+  // Inter-token latency p90 in ms (0 = not enough samples yet).
+  double itl_p90 = 11;
+  // Pacing indicator text ("87%" = median / peak of the rate series, or "—").
+  string stability = 12;
+  // Number of positive windowed-rate samples (the rate-distribution n=).
+  uint32 rate_count = 13;
+  // Decode-rate distribution (positive windowed rates, 1 tok/s bins) and the
+  // inter-token latency distribution (0.5 ms bins, capped at a robust bound
+  // so a few stalls don't zoom the axis out). Binned server-side.
+  Histogram rate_hist = 15;
+  Histogram latency_hist = 16;
+  // Number of inter-token gaps in latency_hist (the latency-distribution n=).
+  uint32 latency_count = 17;
+  // Bimodality annotation for the latency histogram.
+  string latency_label = 14;
 }
 
 // Per-regime breakdown (from the helper model's output classification).
@@ -149,6 +171,8 @@ message Regime {
   double median_tok_s = 5;
   double max_tok_s = 6;
   repeated DecodePoint samples = 7;
+  // Span of the regime's samples in ms (0 when fewer than two samples).
+  double decode_ms = 8;
 }
 
 // End-of-stream: authoritative final stats + usage.

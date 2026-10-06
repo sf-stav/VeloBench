@@ -1361,14 +1361,120 @@ export namespace velobench {
         public static getTypeUrl(typeUrlPrefix?: string): string;
     }
 
+    /** Properties of a Histogram. */
+    interface IHistogram {
+
+        /** Histogram min */
+        min?: (number|null);
+
+        /** Histogram max */
+        max?: (number|null);
+
+        /** Histogram counts */
+        counts?: (number[]|null);
+    }
+
+    /** Represents a Histogram. */
+    class Histogram implements IHistogram {
+
+        /**
+         * Constructs a new Histogram.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: velobench.IHistogram);
+
+        /** Histogram min. */
+        public min: number;
+
+        /** Histogram max. */
+        public max: number;
+
+        /** Histogram counts. */
+        public counts: number[];
+
+        /**
+         * Creates a new Histogram instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns Histogram instance
+         */
+        public static create(properties?: velobench.IHistogram): velobench.Histogram;
+
+        /**
+         * Encodes the specified Histogram message. Does not implicitly {@link velobench.Histogram.verify|verify} messages.
+         * @param message Histogram message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: velobench.IHistogram, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified Histogram message, length delimited. Does not implicitly {@link velobench.Histogram.verify|verify} messages.
+         * @param message Histogram message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: velobench.IHistogram, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a Histogram message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns Histogram
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): velobench.Histogram;
+
+        /**
+         * Decodes a Histogram message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns Histogram
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): velobench.Histogram;
+
+        /**
+         * Verifies a Histogram message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a Histogram message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns Histogram
+         */
+        public static fromObject(object: { [k: string]: any }): velobench.Histogram;
+
+        /**
+         * Creates a plain object from a Histogram message. Also converts values to other types if specified.
+         * @param message Histogram
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: velobench.Histogram, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this Histogram to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for Histogram
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
     /** Properties of a Stats. */
     interface IStats {
 
         /** Stats decode */
         decode?: (velobench.IDecodePoint[]|null);
-
-        /** Stats latencies */
-        latencies?: (number[]|null);
 
         /** Stats live */
         live?: (velobench.ILiveStat|null);
@@ -1388,8 +1494,29 @@ export namespace velobench {
         /** Stats category */
         category?: (string|null);
 
-        /** Stats histMax */
-        histMax?: (number|null);
+        /** Stats acceptanceMa */
+        acceptanceMa?: (velobench.IAcceptancePoint[]|null);
+
+        /** Stats itlP90 */
+        itlP90?: (number|null);
+
+        /** Stats stability */
+        stability?: (string|null);
+
+        /** Stats rateCount */
+        rateCount?: (number|null);
+
+        /** Stats rateHist */
+        rateHist?: (velobench.IHistogram|null);
+
+        /** Stats latencyHist */
+        latencyHist?: (velobench.IHistogram|null);
+
+        /** Stats latencyCount */
+        latencyCount?: (number|null);
+
+        /** Stats latencyLabel */
+        latencyLabel?: (string|null);
     }
 
     /** Represents a Stats. */
@@ -1403,9 +1530,6 @@ export namespace velobench {
 
         /** Stats decode. */
         public decode: velobench.IDecodePoint[];
-
-        /** Stats latencies. */
-        public latencies: number[];
 
         /** Stats live. */
         public live?: (velobench.ILiveStat|null);
@@ -1425,8 +1549,29 @@ export namespace velobench {
         /** Stats category. */
         public category: string;
 
-        /** Stats histMax. */
-        public histMax: number;
+        /** Stats acceptanceMa. */
+        public acceptanceMa: velobench.IAcceptancePoint[];
+
+        /** Stats itlP90. */
+        public itlP90: number;
+
+        /** Stats stability. */
+        public stability: string;
+
+        /** Stats rateCount. */
+        public rateCount: number;
+
+        /** Stats rateHist. */
+        public rateHist?: (velobench.IHistogram|null);
+
+        /** Stats latencyHist. */
+        public latencyHist?: (velobench.IHistogram|null);
+
+        /** Stats latencyCount. */
+        public latencyCount: number;
+
+        /** Stats latencyLabel. */
+        public latencyLabel: string;
 
         /**
          * Creates a new Stats instance using the specified properties.
@@ -1529,6 +1674,9 @@ export namespace velobench {
 
         /** Regime samples */
         samples?: (velobench.IDecodePoint[]|null);
+
+        /** Regime decodeMs */
+        decodeMs?: (number|null);
     }
 
     /** Represents a Regime. */
@@ -1560,6 +1708,9 @@ export namespace velobench {
 
         /** Regime samples. */
         public samples: velobench.IDecodePoint[];
+
+        /** Regime decodeMs. */
+        public decodeMs: number;
 
         /**
          * Creates a new Regime instance using the specified properties.

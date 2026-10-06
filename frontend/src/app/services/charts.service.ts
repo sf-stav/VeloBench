@@ -3,7 +3,6 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { LiveSample } from '../types';
 import { regimeColor, regimeLabel as regimeLabelOf, withAlpha } from './regimes';
-import { specDepthDomain } from './latency-clusters';
 
 /** One decoded sample for the hero timeline. */
 export interface HeroSample {
@@ -25,6 +24,13 @@ export function categoryColor(cat: string): string {
 function brandRamp(t: number): string {
   const x = Math.max(0, Math.min(1, t));
   return withAlpha('#4C86FF', 0.28 + 0.62 * x);
+}
+
+/** A distribution binned by the server: `counts.length` equal bins over [min, max]. */
+export interface HistogramData {
+  min: number;
+  max: number;
+  counts: number[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -382,14 +388,12 @@ export class ChartsService {
     this.xlabels(ctx, w, h, padL, padR, t0, t1);
   }
 
-  /** Histogram of a numeric distribution. */
-  drawHistogram(canvas: HTMLCanvasElement, values: number[], opts?: {
-    color?: string; bins?: number; fmt?: (v: number) => string; emptyLabel?: string;
+  /** Histogram of a distribution the SERVER already binned ({min, max, counts});
+   *  this only draws the bars. */
+  drawHistogram(canvas: HTMLCanvasElement, hist: HistogramData | null | undefined, opts?: {
+    color?: string; fmt?: (v: number) => string; emptyLabel?: string;
     gradient?: 'blueyellow' | 'greenred';
     splitLine?: number;
-    max?: number;       // cap the x-axis here (values above are clamped to the last bin)
-    binWidth?: number;  // target bin width (e.g. 0.1 ms for fine granularity)
-    maxBins?: number;
     logY?: boolean;     // log-scale the count (Y) axis
     /** 'overall' (§6): single brand-blue sequential scale — no rainbow. */
     overall?: boolean;
@@ -402,32 +406,13 @@ export class ChartsService {
     if (!s) return;
     const { ctx, w, h } = s;
     this.clear(ctx, w, h);
-    if (!values.length) {
+    if (!hist || !hist.counts.length) {
       this.empty(ctx, w, h, opts?.emptyLabel);
       return;
     }
-    // Cap the scale: don't let a few extreme stall values zoom the graph out.
-    const rawMin = Math.min(...values), rawMax = Math.max(...values);
-    const min = rawMin;
-    const absMax = rawMax;
-    const cappedMax = opts?.max != null && opts.max > min ? Math.min(opts.max, absMax) : absMax;
-    const max = cappedMax === min ? min + 1 : cappedMax;
-    const range = max - min || 1;
-    // Finer granularity when a target bin width is requested.
-    let bins: number;
-    if (opts?.binWidth) {
-      bins = Math.round(range / opts.binWidth);
-    } else {
-      bins = opts?.bins ?? Math.min(48, Math.max(4, Math.round(Math.sqrt(values.length) * 2)));
-    }
-    bins = Math.max(4, Math.min(opts?.maxBins ?? 200, bins));
-    const binW = range / bins;
-    const counts = new Array(bins).fill(0);
-    for (const v of values) {
-      let b = Math.floor((v - min) / binW);
-      if (b >= bins) b = bins - 1;
-      counts[b]++;
-    }
+    const { min, max, counts } = hist;
+    const bins = counts.length;
+    const binW = (max - min) / bins;
     const top = Math.max(...counts) || 1;
     const padL = 40, padR = 10, padT = 10, padB = 18;
     const plotW = w - padL - padR, plotH = h - padT - padB;
@@ -669,89 +654,11 @@ export class ChartsService {
   }
 
   /**
-   * Dynamic Y bounds for a percentage acceptance-rate line. Fits the data range
-   * (with padding) rather than a fixed 0..100, so a meaningful rate band is not
-   * squashed against the bottom. Clamped to >= 0 for the min and <= 100 for the
-   * max (the rate is a percentage).
-   */
-  /** One distribution histogram; pass `domain` to share the X scale across charts. */
-  drawHist(canvas: HTMLCanvasElement, values: number[], opts?: {
-    color?: string;
-    fmt?: (v: number) => string;
-    emptyLabel?: string;
-    bins?: number;
-    domain?: [number, number];
-    median?: number;
-  }): void {
-    const s = this.setup(canvas);
-    if (!s) return;
-    const { ctx, w, h } = s;
-    this.clear(ctx, w, h);
-    const vals = values.filter((v) => v > 0);
-    if (vals.length < 2) {
-      this.empty(ctx, w, h, opts?.emptyLabel);
-      return;
-    }
-    const col = opts?.color || '#4C86FF';
-    const padL = 30, padR = 10, padT = 8, padB = 18;
-    const plotW = w - padL - padR, plotH = h - padT - padB;
-    const lo = opts?.domain ? opts.domain[0] : Math.min(...vals);
-    let hi = opts?.domain ? opts.domain[1] : Math.max(...vals);
-    if (hi - lo < 1e-9) hi = lo + 1;
-    const bins = opts?.bins ?? 28;
-    const bw = (hi - lo) / bins;
-    const counts = new Array(bins).fill(0);
-    for (const v of vals) counts[Math.min(bins - 1, Math.floor((v - lo) / bw))]++;
-    const peak = Math.max(...counts, 1);
-    const yFor = (c: number) => padT + plotH - (c / peak) * plotH;
-    ctx.strokeStyle = 'rgba(148,163,184,.15)';
-    ctx.lineWidth = 1;
-    for (let g = 0; g <= 2; g++) {
-      const y = padT + (plotH * g) / 2;
-      ctx.beginPath();
-      ctx.moveTo(padL, y);
-      ctx.lineTo(padL + plotW, y);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(148,163,184,.6)';
-      ctx.font = '9px ui-monospace, monospace';
-      ctx.textAlign = 'right';
-      ctx.fillText(Math.round(peak * (1 - g / 2)).toString(), padL - 4, y + 3);
-    }
-    const w2 = plotW / bins;
-    ctx.fillStyle = col;
-    ctx.globalAlpha = 0.8;
-    counts.forEach((c, i) => {
-      const x = padL + i * w2;
-      ctx.fillRect(x, yFor(c), Math.max(w2 - 1, 0.5), padT + plotH - yFor(c));
-    });
-    ctx.globalAlpha = 1;
-    if (opts?.median != null && opts.median > lo && opts.median < hi) {
-      const x = padL + ((opts.median - lo) / (hi - lo)) * plotW;
-      ctx.strokeStyle = 'rgba(232,236,244,.65)';
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath();
-      ctx.moveTo(x, padT);
-      ctx.lineTo(x, padT + plotH);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    const fmt = opts?.fmt || ((v: number) => v.toFixed(0));
-    ctx.fillStyle = 'rgba(148,163,184,.7)';
-    ctx.font = '9px ui-monospace, monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(fmt(lo), padL, h - 4);
-    ctx.textAlign = 'center';
-    ctx.fillText(fmt((lo + hi) / 2), padL + plotW / 2, h - 4);
-    ctx.textAlign = 'right';
-    ctx.fillText(fmt(hi), w - padR, h - 4);
-  }
-
-  /**
    * Paired horizontal bars per metric (A vs B). Within each metric the larger
    * value spans the full bar area; A is the top bar, B the bottom one, with
    * numeric values at the right.
    */
-  drawMetricBars(canvas: HTMLCanvasElement, rows: Array<{ label: string; a: number; b: number; fmt?: (v: number) => string; good?: boolean | null }>, opts?: {
+  drawMetricBars(canvas: HTMLCanvasElement, rows: Array<{ label: string; a: number; b: number; aS?: string; bS?: string; fmt?: (v: number) => string; good?: boolean | null }>, opts?: {
     labelA?: string;
     labelB?: string;
   }): void {
@@ -815,93 +722,10 @@ export class ChartsService {
       ctx.font = '9.5px ui-monospace, monospace';
       ctx.textAlign = 'right';
       ctx.fillStyle = r.good == null ? 'rgba(148,163,184,.9)' : aWins ? WIN : LOSE;
-      ctx.fillText(fmt(r.a), w - valW / 2 - 20, y + 9, valW / 2);
+      ctx.fillText(r.aS ?? fmt(r.a), w - valW / 2 - 20, y + 9, valW / 2);
       ctx.fillStyle = r.good == null ? 'rgba(148,163,184,.9)' : bWins ? WIN : LOSE;
-      ctx.fillText(fmt(r.b), w - 2, y + 20, valW / 2);
+      ctx.fillText(r.bS ?? fmt(r.b), w - 2, y + 20, valW / 2);
     });
-  }
-
-  /** Two overlaid histograms (A vs B) sharing one bin domain. */
-  drawHistCompare(canvas: HTMLCanvasElement, a: number[], b: number[], opts?: {
-    labelA?: string;
-    labelB?: string;
-    fmt?: (v: number) => string;
-    emptyLabel?: string;
-  }): void {
-    const s = this.setup(canvas);
-    if (!s) return;
-    const { ctx, w, h } = s;
-    this.clear(ctx, w, h);
-    if (a.length + b.length < 2) {
-      this.empty(ctx, w, h, opts?.emptyLabel);
-      return;
-    }
-    const colA = '#4C86FF';
-    const colB = '#F5A97F';
-    const padL = 34, padR = 10, padT = 18, padB = 20;
-    const plotW = w - padL - padR, plotH = h - padT - padB;
-    const all = [...a, ...b].filter((v) => v > 0);
-    const lo = Math.min(...all);
-    let hi = Math.max(...all);
-    if (hi - lo < 1e-9) hi = lo + 1;
-    const bins = 24;
-    const bw = (hi - lo) / bins;
-    const ha = new Array(bins).fill(0);
-    const hb = new Array(bins).fill(0);
-    for (const v of a) if (v > 0) ha[Math.min(bins - 1, Math.floor((v - lo) / bw))]++;
-    for (const v of b) if (v > 0) hb[Math.min(bins - 1, Math.floor((v - lo) / bw))]++;
-    const peak = Math.max(...ha, ...hb, 1);
-    const xFor = (v: number) => padL + ((v - lo) / (hi - lo)) * plotW;
-    const yFor = (c: number) => padT + plotH - (c / peak) * plotH;
-    // grid + counts
-    ctx.strokeStyle = 'rgba(148,163,184,.15)';
-    ctx.lineWidth = 1;
-    for (let g = 0; g <= 2; g++) {
-      const y = padT + (plotH * g) / 2;
-      ctx.beginPath();
-      ctx.moveTo(padL, y);
-      ctx.lineTo(padL + plotW, y);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(148,163,184,.7)';
-      ctx.font = '9px ui-monospace, monospace';
-      ctx.textAlign = 'right';
-      ctx.fillText(Math.round(peak * (1 - g / 2)).toString(), padL - 4, y + 3);
-    }
-    // B then A so A (baseline) draws on top; alpha overlap shows both shapes.
-    const w2 = plotW / bins;
-    const bar = (arr: number[], color: string, alpha: number) => {
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = color;
-      arr.forEach((c, i) => {
-        const x = padL + i * w2;
-        ctx.fillRect(x, yFor(c), Math.max(w2 - 1.2, 0.6), padT + plotH - yFor(c));
-      });
-      ctx.globalAlpha = 1;
-    };
-    bar(hb, colB, 0.55);
-    bar(ha, colA, 0.55);
-    // X axis: min/mid/max value labels
-    ctx.fillStyle = 'rgba(148,163,184,.7)';
-    ctx.font = '9px ui-monospace, monospace';
-    const fmt = opts?.fmt || ((v: number) => v.toFixed(0));
-    ctx.textAlign = 'left';
-    ctx.fillText(fmt(lo), padL, h - 4);
-    ctx.textAlign = 'center';
-    ctx.fillText(fmt((lo + hi) / 2), padL + plotW / 2, h - 4);
-    ctx.textAlign = 'right';
-    ctx.fillText(fmt(hi), w - padR, h - 4);
-    // legend
-    ctx.font = '9px ui-monospace, monospace';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = colA;
-    ctx.fillRect(padL, 4, 7, 7);
-    ctx.fillStyle = 'rgba(232,236,244,.85)';
-    ctx.fillText(opts?.labelA || 'A', padL + 10, 10.5);
-    const lw = ctx.measureText(opts?.labelA || 'A').width;
-    ctx.fillStyle = colB;
-    ctx.fillRect(padL + 24 + lw, 4, 7, 7);
-    ctx.fillStyle = 'rgba(232,236,244,.85)';
-    ctx.fillText(opts?.labelB || 'B', padL + 34 + lw, 10.5);
   }
 
   /** Unclamped bounds for a non-percentage overlay series (decode tok/s). */
@@ -1056,7 +880,9 @@ export class ChartsService {
     // Numeric axis: one slot per integer depth. Empty slots stay (so gaps in
     // the distribution are visible) but the column count follows the data —
     // "runs of 2..N" — instead of a hardcoded window.
-    const dom = opts?.domain ?? specDepthDomain(items) ?? [2, 2];
+    // Axis range only (drawing scale): columns run from 2 to the deepest run drawn.
+    const maxDepth = items.reduce((m, p) => Math.max(m, p.depth), 0);
+    const dom: [number, number] = opts?.domain ?? (maxDepth >= 2 ? [2, maxDepth] : [2, 2]);
     const lo = Math.ceil(dom[0]);
     const hi = Math.max(lo, Math.floor(dom[1]));
     const span = hi - lo;

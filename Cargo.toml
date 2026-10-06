@@ -1,13 +1,20 @@
 [package]
 name = "velobench"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = "VeloBench — LLM live-stats benchmarking and chat console"
-license = "AGPL-3.0"
+license = "MIT"
 
 [[bin]]
 name = "velobench"
 path = "src/main.rs"
+
+# Offline harness: classifies a JSON dump of section texts with the free-tier
+# classifier so scripts can diff Rust labels against the Python validator.
+# Usage: cargo run --release --bin parity -- dump.json > labels.json
+[[bin]]
+name = "parity"
+path = "src/bin/parity.rs"
 
 [dependencies]
 axum = { version = "0.8", features = ["ws"] }

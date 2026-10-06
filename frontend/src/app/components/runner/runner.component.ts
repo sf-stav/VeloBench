@@ -17,6 +17,10 @@ export interface WorkerSnap {
   error: string | null;
   /** Result-assertion verdict (review M1); null = no assertion set. */
   assert_pass: boolean | null;
+  /** Server-computed: exact token count once settled, else the live estimate. */
+  tokens: number;
+  /** Server-computed sustained decode rate; null when not measurable (< 2 tokens). */
+  rate: number | null;
 }
 
 export interface ConcRun {
@@ -38,6 +42,12 @@ export interface ConcRun {
   steps: number;
   step_title: string;
   snaps: WorkerSnap[];
+  /** Server-computed aggregates for the run strip. */
+  running: number;
+  done: number;
+  /** Σ of the workers' sustained rates; null when no worker has a rate. */
+  sum_tok_s: number | null;
+  sum_tokens: number;
 }
 
 @Component({
@@ -151,40 +161,6 @@ export class RunnerComponent implements OnInit, OnDestroy {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // Aggregate strip values for one run.
-  runningCount(r: ConcRun): number {
-    return r.snaps.filter((w) => w.state === 'streaming').length;
-  }
-  doneCount(r: ConcRun): number {
-    return r.snaps.filter((w) => w.state === 'done').length;
-  }
-  /** A settled rate is only meaningful with a real inter-token stream: a
-   *  1-token answer has no interval to measure, so it shows as insufficient
-   *  instead of an absurd tok/s figure. */
-  rateOf(w: WorkerSnap): number | null {
-    if (this.maxTok(w) < 2) return null;
-    const settled = w.state === 'done' || w.state === 'stopped';
-    const rate = settled ? (w.final_tok_s ?? 0) : (w.tok_s || 0);
-    return rate > 0 ? rate : null;
-  }
-  sumTokS(r: ConcRun): number {
-    let sum = 0;
-    let n = 0;
-    for (const w of r.snaps) {
-      const rate = this.rateOf(w);
-      if (rate != null) { sum += rate; n++; }
-    }
-    return n ? sum : 0;
-  }
-  hasRates(r: ConcRun): boolean {
-    return r.snaps.some((w) => this.rateOf(w) != null);
-  }
-  sumTokens(r: ConcRun): number {
-    return r.snaps.reduce((acc, w) => acc + Math.max(w.completion_tokens || 0, Math.round(w.est_tokens || 0)), 0);
-  }
-  maxTok(w: WorkerSnap): number {
-    return Math.max(w.completion_tokens || 0, Math.round(w.est_tokens || 0));
-  }
   testTitle(id: string): string {
     return this.tests().find((t) => t.id === id)?.title || id;
   }

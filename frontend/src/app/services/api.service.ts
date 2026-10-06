@@ -1,8 +1,8 @@
 import { Injectable } from '@angular/core';
 import {
-  Benchmark,
   SessionAnalysis,
   SessionAnalysisDetail,
+  SessionGroup,
   Settings,
   StreamRequest,
   TestDef,
@@ -91,10 +91,6 @@ export class ApiService {
   }
 
   // ---- Saved session comparisons ----
-
-  async benchmarks(): Promise<any[]> {
-    return this.json(API + '/api/benchmarks');
-  }
 
   async listComparisons(): Promise<any[]> {
     return this.json(API + '/api/comparisons');
@@ -225,10 +221,6 @@ export class ApiService {
   }
 
   // ---------- benchmarks ----------
-  async getBenchmarks(): Promise<Benchmark[]> {
-    return this.json<Benchmark[]>(API + '/api/benchmarks');
-  }
-
   async deleteBenchmark(id: string): Promise<{ deleted: boolean }> {
     return this.json(API + `/api/benchmarks/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
@@ -266,6 +258,23 @@ export class ApiService {
   /** Full analysis + assembled generated transcript for one session. */
   async getAnalysis(session: string): Promise<SessionAnalysisDetail> {
     return this.json<SessionAnalysisDetail>(API + `/api/analyses/${encodeURIComponent(session)}`);
+  }
+
+  /** Server-summarised session rows (grouping, decode rate, regime strip). */
+  async getSessions(): Promise<SessionGroup[]> {
+    return this.json<SessionGroup[]>(API + '/api/sessions');
+  }
+
+  /** Server-computed Compare page view model for one saved comparison. */
+  async getComparisonView(id: string): Promise<any> {
+    return this.json<any>(API + `/api/comparisons/${encodeURIComponent(id)}/view`);
+  }
+
+  /** Server-computed report view model for one (scope, section) selection. */
+  async getAnalysisView(session: string, scope: string, section: string | null): Promise<any> {
+    const q = new URLSearchParams({ scope });
+    if (section) q.set('section', section);
+    return this.json<any>(API + `/api/analyses/${encodeURIComponent(session)}/view?${q.toString()}`);
   }
 
   /** Current backend session snapshot (graphs, live, last run, recorded turns). */

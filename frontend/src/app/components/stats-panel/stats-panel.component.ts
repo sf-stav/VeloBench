@@ -1,38 +1,11 @@
-import { AfterViewInit, Component, ElementRef, Input, OnInit, effect, signal } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, Input, effect, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ChartsService, categoryColor } from '../../services/charts.service';
 import { regimeChipBg, regimeLabel as regimeLabelOf } from '../../services/regimes';
 import { StatsEngine } from '../../services/stats-engine.service';
 import { ApiService } from '../../services/api.service';
 import { SettingsService } from '../../services/settings.service';
-import { Benchmark, LiveSample } from '../../types';
-
-/** Max points drawn on the Acceptance Rate Estimate chart (most recent kept). */
-/** Trailing window (in samples) for the Acceptance Rate moving average. */
-const ACCEPTANCE_MA_PERIOD = 27;
-
-/**
- * Trailing moving average over `period` samples, O(n) via a running sum. Each
- * output point keeps its own timestamp, so the line stays aligned in time.
- * Display-only: the underlying acceptance samples are untouched for any other
- * calculation.
- */
-function movingAverage(
-  points: Array<{ t: number; rate: number }>,
-  period: number,
-): Array<{ t: number; rate: number }> {
-  if (points.length < 2) return points;
-  const out: Array<{ t: number; rate: number }> = [];
-  let sum = 0;
-  for (let i = 0; i < points.length; i++) {
-    sum += points[i].rate;
-    if (i >= period) sum -= points[i - period].rate;
-    // Average over what is available at the very start of the window.
-    const n = Math.min(i + 1, period);
-    out.push({ t: points[i].t, rate: sum / n });
-  }
-  return out;
-}
+import { LiveSample } from '../../types';
 
 @Component({
   selector: 'app-stats-panel',
@@ -40,7 +13,7 @@ function movingAverage(
   templateUrl: './stats-panel.component.html',
   styleUrl: './stats-panel.component.css',
 })
-export class StatsPanelComponent implements OnInit, AfterViewInit {
+export class StatsPanelComponent implements AfterViewInit {
   /** 'chat' embeds in the chat screen; 'stats' is the analytics scope. Both show
    *  the same session aggregate (across turns, until New Chat resets it). */
   @Input() scope: 'chat' | 'stats' = 'stats';
@@ -79,7 +52,6 @@ export class StatsPanelComponent implements OnInit, AfterViewInit {
     });
   }
 
-  readonly benchmarks = signal<Benchmark[]>([]);
   readonly visibleSamples = signal<LiveSample[]>([]);
   readonly prefill = signal<number[]>([]);
   readonly tokensPerReq = signal<number[]>([]);
@@ -100,11 +72,11 @@ export class StatsPanelComponent implements OnInit, AfterViewInit {
     let lastBudget = -1;
     effect(() => {
       const _agg = this.engine.aggSamples();
-      const _lat = this.engine.aggLatencies();
-      const _acc = this.engine.aggAcceptance();
+      const _rh = this.engine.rateHist();
+      const _lh = this.engine.latencyHist();
+      const _acc = this.engine.aggAcceptanceMa();
       const _sd = this.engine.aggSpecDepth();
       const _cl = this.engine.aggClusters();
-      const _hm = this.engine.aggHistMax();
       const _live = this.engine.live();
       const _r = this.engine.regimes();
       const budget = this.ss.settings().max_stats_tokens;
@@ -116,10 +88,6 @@ export class StatsPanelComponent implements OnInit, AfterViewInit {
       this.refreshStatHistory();
       if (this.ready) this.redraw();
     });
-  }
-
-  ngOnInit(): void {
-    if (this.scope !== 'chat') this.loadBenchmarks();
   }
 
   ngAfterViewInit(): void {
@@ -144,18 +112,15 @@ export class StatsPanelComponent implements OnInit, AfterViewInit {
     return 'IDLE';
   }
 
-  /** Live stability: median as % of the observed peak. */
+  /** Server-computed display values (median ÷ peak, ITL p90, rate n=). */
   stabilityPct(): string {
-    const l = this.engine.live();
-    return l.max > 0 ? Math.round((l.median / l.max) * 100) + '%' : '—';
+    return this.engine.stability();
   }
-
-  /** ITL p90 once enough gap samples exist (§10 responsiveness group). */
-  readonly itlP90 = signal<number | null>(null);
-
-  /** Count of positive windowed rate samples (distribution n=). */
+  get itlP90() {
+    return this.engine.itlP90;
+  }
   rateCount(): number {
-    return this.visibleSamples().filter((s) => s.tok_s > 0).length;
+    return this.engine.rateCount();
   }
 
   catChip(cat: string): string {
@@ -167,44 +132,14 @@ export class StatsPanelComponent implements OnInit, AfterViewInit {
     this.visibleSamples.set(this.engine.aggSamples());
   }
 
-  async loadBenchmarks(): Promise<void> {
-    try {
-      const all = await this.api.getBenchmarks();
-      const p = this.ss.activeProvider();
-      const m = this.ss.activeModel();
-      const mine = p && m ? all.filter((b) => b.provider === p.name && b.model === m.id) : all;
-      this.benchmarks.set(mine);
-    } catch (e) {
-      console.warn('load benchmarks', e);
-    }
-  }
-
   private refreshStatHistory(): void {
-    if (this.scope === 'chat') {
-      // Chat: only the current turn's TTFT / token counts (empty before first token).
-      const live = this.engine.live();
-      const fin = this.engine.final();
-      const t = live.ttft_ms ?? fin?.ttft_ms;
-      const tok = live.tokens || fin?.completion_tokens || 0;
-      this.prefill.set(t != null && t > 0 ? [t] : []);
-      this.tokensPerReq.set(tok > 0 ? [tok] : []);
-      return;
-    }
-    const mine = this.benchmarks();
-    const fin = this.engine.final();
+    // Only the current turn's TTFT / token counts (empty before first token).
     const live = this.engine.live();
-    const pre: number[] = mine.map((b) => b.stats?.ttft_ms).filter((v): v is number => v != null);
-    const tok: number[] = mine.map(
-      (b) => b.stats?.completion_tokens ?? b.stats?.token_events?.length ?? 0,
-    );
-    // Include the CURRENT run as soon as we have a first token (live), so the
-    // TTFT / tokens bars appear during generation, not just at the end.
-    const curTtft = live.ttft_ms ?? fin?.ttft_ms;
-    const curTok = live.tokens || fin?.completion_tokens || 0;
-    if (curTtft != null && curTtft > 0) pre.push(curTtft);
-    if (curTok > 0) tok.push(curTok);
-    this.prefill.set(pre);
-    this.tokensPerReq.set(tok);
+    const fin = this.engine.final();
+    const t = live.ttft_ms ?? fin?.ttft_ms;
+    const tok = live.tokens || fin?.completion_tokens || 0;
+    this.prefill.set(t != null && t > 0 ? [t] : []);
+    this.tokensPerReq.set(tok > 0 ? [tok] : []);
   }
 
   private redraw(): void {
@@ -223,14 +158,6 @@ export class StatsPanelComponent implements OnInit, AfterViewInit {
     // we show a note instead of a misleading flat/empty result.
     const lc = this.engine.aggClusters();
     const specNote = lc && !lc.bimodal ? 'No bimodal split detected.' : null;
-    // ITL p90 for the responsiveness group (needs a handful of gaps first).
-    const lats = this.engine.aggLatencies();
-    if (lats.length >= 8) {
-      const s = [...lats].sort((a, b) => a - b);
-      this.itlP90.set(s[Math.min(s.length - 1, Math.floor(s.length * 0.9))]);
-    } else {
-      this.itlP90.set(null);
-    }
     const decodeCanvas = this.canvas('decodeChart');
     if (decodeCanvas) {
       this.charts.drawDecode(decodeCanvas, samples, {
@@ -258,36 +185,28 @@ export class StatsPanelComponent implements OnInit, AfterViewInit {
     if (ttftBar) this.charts.drawBars(ttftBar, this.prefill(), { color: '#A4B2C8', fmt: (v) => (v / 1000).toFixed(2) + 's', emptyLabel });
     if (tokensBar) this.charts.drawBars(tokensBar, this.tokensPerReq(), { color: '#4C86FF', fmt: (v) => v.toFixed(0), emptyLabel });
     if (histCanvas) {
-      const vals = samples.map((s) => s.tok_s).filter((v) => v > 0);
-      this.charts.drawHistogram(histCanvas, vals, {
+      this.charts.drawHistogram(histCanvas, this.engine.rateHist(), {
         color: this.category() ? categoryColor(this.category()!) : '#4C86FF',
         fmt: (v) => v.toFixed(1),
-        binWidth: 1,
         emptyLabel,
       });
     }
     // inter-update-message latency histogram (green -> red)
     const latCanvas = this.canvas('latencyChart');
     if (latCanvas) {
-      this.charts.drawHistogram(latCanvas, this.engine.aggLatencies(), {
+      this.charts.drawHistogram(latCanvas, this.engine.latencyHist(), {
         fmt: (v) => v.toFixed(0),
         emptyLabel,
         gradient: 'greenred',
         splitLine: lc?.bimodal ? lc.split : undefined,
-        max: this.engine.aggHistMax() ?? undefined,
-        binWidth: 0.5,
-        maxBins: 200,
         logY: true,
       });
     }
-    // acceptance rate estimate (line, dynamic % scale). The whole curve is
-    // rendered — no point cap. Warm-up is excluded twice over: the server
-    // already withholds the first series points, and the first PERIOD-1
-    // moving-average outputs here are partial-window values, so they are
-    // dropped too — every drawn point is a full 27-sample average.
+    // acceptance rate estimate (line, dynamic % scale): the server sends the
+    // smoothed, warm-up-trimmed curve; the whole thing is drawn as received.
     const accCanvas = this.canvas('acceptanceChart');
     if (accCanvas) {
-      const acc = specNote ? [] : movingAverage(this.engine.aggAcceptance(), ACCEPTANCE_MA_PERIOD).slice(ACCEPTANCE_MA_PERIOD - 1);
+      const acc = specNote ? [] : this.engine.aggAcceptanceMa();
       this.charts.drawRateLine(accCanvas, acc, {
         color: '#4C86FF',
         emptyLabel: specNote ?? emptyLabel,
@@ -320,9 +239,6 @@ export class StatsPanelComponent implements OnInit, AfterViewInit {
     } finally {
       this.capturing.set(false);
     }
-  }
-  refresh(): void {
-    this.loadBenchmarks();
   }
 
   /** Public hook so the host can push a redraw on every stream frame. */
@@ -367,12 +283,6 @@ export class StatsPanelComponent implements OnInit, AfterViewInit {
 
   /** Cluster/bimodality annotation for the latency histogram. */
   latencyLabel(): string {
-    const c = this.engine.aggClusters();
-    if (!c) return '';
-    if (!c.bimodal) return 'unimodal distribution (speculation likely off)';
-    const [a, b] = c.clusters;
-    const p = (cc: { count: number }) => ((cc.count / Math.max(1, c.total)) * 100).toFixed(0) + '%';
-    return `bimodal · low ≈ ${a.mean.toFixed(0)}ms (${p(a)}, n=${a.count}) · ` +
-           `high ≈ ${b.mean.toFixed(0)}ms (${p(b)}, n=${b.count}) · split ${c.split.toFixed(0)}ms`;
+    return this.engine.latencyLabel();
   }
 }

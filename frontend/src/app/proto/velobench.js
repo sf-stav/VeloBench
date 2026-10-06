@@ -3923,6 +3923,326 @@ export const velobench = $root.velobench = (() => {
         return LiveStat;
     })();
 
+    velobench.Histogram = (function() {
+
+        /**
+         * Properties of a Histogram.
+         * @memberof velobench
+         * @interface IHistogram
+         * @property {number|null} [min] Histogram min
+         * @property {number|null} [max] Histogram max
+         * @property {Array.<number>|null} [counts] Histogram counts
+         */
+
+        /**
+         * Constructs a new Histogram.
+         * @memberof velobench
+         * @classdesc Represents a Histogram.
+         * @implements IHistogram
+         * @constructor
+         * @param {velobench.IHistogram=} [properties] Properties to set
+         */
+        function Histogram(properties) {
+            this.counts = [];
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null && keys[i] !== "__proto__")
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * Histogram min.
+         * @member {number} min
+         * @memberof velobench.Histogram
+         * @instance
+         */
+        Histogram.prototype.min = 0;
+
+        /**
+         * Histogram max.
+         * @member {number} max
+         * @memberof velobench.Histogram
+         * @instance
+         */
+        Histogram.prototype.max = 0;
+
+        /**
+         * Histogram counts.
+         * @member {Array.<number>} counts
+         * @memberof velobench.Histogram
+         * @instance
+         */
+        Histogram.prototype.counts = $util.emptyArray;
+
+        /**
+         * Creates a new Histogram instance using the specified properties.
+         * @function create
+         * @memberof velobench.Histogram
+         * @static
+         * @param {velobench.IHistogram=} [properties] Properties to set
+         * @returns {velobench.Histogram} Histogram instance
+         */
+        Histogram.create = function create(properties) {
+            return new Histogram(properties);
+        };
+
+        /**
+         * Encodes the specified Histogram message. Does not implicitly {@link velobench.Histogram.verify|verify} messages.
+         * @function encode
+         * @memberof velobench.Histogram
+         * @static
+         * @param {velobench.IHistogram} message Histogram message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        Histogram.encode = function encode(message, writer, q) {
+            if (!writer)
+                writer = $Writer.create();
+            if (q === undefined)
+                q = 0;
+            if (q > $util.recursionLimit)
+                throw Error("max depth exceeded");
+            if (message.min != null && Object.hasOwnProperty.call(message, "min"))
+                writer.uint32(/* id 1, wireType 1 =*/9).double(message.min);
+            if (message.max != null && Object.hasOwnProperty.call(message, "max"))
+                writer.uint32(/* id 2, wireType 1 =*/17).double(message.max);
+            if (message.counts != null && message.counts.length) {
+                writer.uint32(/* id 3, wireType 2 =*/26).fork();
+                for (let i = 0; i < message.counts.length; ++i)
+                    writer.uint32(message.counts[i]);
+                writer.ldelim();
+            }
+            return writer;
+        };
+
+        /**
+         * Encodes the specified Histogram message, length delimited. Does not implicitly {@link velobench.Histogram.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof velobench.Histogram
+         * @static
+         * @param {velobench.IHistogram} message Histogram message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        Histogram.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer && writer.len ? writer.fork() : writer).ldelim();
+        };
+
+        /**
+         * Decodes a Histogram message from the specified reader or buffer.
+         * @function decode
+         * @memberof velobench.Histogram
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {velobench.Histogram} Histogram
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        Histogram.decode = function decode(reader, length, error, long) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            if (long === undefined)
+                long = 0;
+            if (long > $Reader.recursionLimit)
+                throw Error("maximum nesting depth exceeded");
+            let end, message;
+            if (length === undefined)
+                end = reader.len;
+            else {
+                end = reader.pos + length;
+                if (end > reader.len)
+                    throw RangeError("index out of range");
+                length = reader.len;
+                reader.len = end;
+            }
+            message = new $root.velobench.Histogram();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        message.min = reader.double();
+                        break;
+                    }
+                case 2: {
+                        message.max = reader.double();
+                        break;
+                    }
+                case 3: {
+                        if (!(message.counts && message.counts.length))
+                            message.counts = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            if (end2 > reader.len)
+                                throw RangeError("index out of range");
+                            reader.len = end2;
+                            while (reader.pos < end2)
+                                message.counts.push(reader.uint32());
+                            if (reader.pos !== end2)
+                                throw RangeError("index out of range");
+                            reader.len = end;
+                        } else
+                            message.counts.push(reader.uint32());
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7, long);
+                    break;
+                }
+            }
+            if (length !== undefined) {
+                if (reader.pos !== end)
+                    throw RangeError("index out of range");
+                reader.len = length;
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a Histogram message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof velobench.Histogram
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {velobench.Histogram} Histogram
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        Histogram.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a Histogram message.
+         * @function verify
+         * @memberof velobench.Histogram
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        Histogram.verify = function verify(message, long) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (long === undefined)
+                long = 0;
+            if (long > $util.recursionLimit)
+                return "maximum nesting depth exceeded";
+            if (message.min != null && Object.hasOwnProperty.call(message, "min"))
+                if (typeof message.min !== "number")
+                    return "min: number expected";
+            if (message.max != null && Object.hasOwnProperty.call(message, "max"))
+                if (typeof message.max !== "number")
+                    return "max: number expected";
+            if (message.counts != null && Object.hasOwnProperty.call(message, "counts")) {
+                if (!Array.isArray(message.counts))
+                    return "counts: array expected";
+                for (let i = 0; i < message.counts.length; ++i)
+                    if (!$util.isInteger(message.counts[i]))
+                        return "counts: integer[] expected";
+            }
+            return null;
+        };
+
+        /**
+         * Creates a Histogram message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof velobench.Histogram
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {velobench.Histogram} Histogram
+         */
+        Histogram.fromObject = function fromObject(object, long) {
+            if (object instanceof $root.velobench.Histogram)
+                return object;
+            if (!$util.isObject(object))
+                throw TypeError(".velobench.Histogram: object expected");
+            if (long === undefined)
+                long = 0;
+            if (long > $util.recursionLimit)
+                throw Error("maximum nesting depth exceeded");
+            let message = new $root.velobench.Histogram();
+            if (object.min != null)
+                message.min = Number(object.min);
+            if (object.max != null)
+                message.max = Number(object.max);
+            if (object.counts) {
+                if (!Array.isArray(object.counts))
+                    throw TypeError(".velobench.Histogram.counts: array expected");
+                message.counts = [];
+                for (let i = 0; i < object.counts.length; ++i)
+                    message.counts[i] = object.counts[i] >>> 0;
+            }
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a Histogram message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof velobench.Histogram
+         * @static
+         * @param {velobench.Histogram} message Histogram
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        Histogram.toObject = function toObject(message, options, q) {
+            if (!options)
+                options = {};
+            if (q === undefined)
+                q = 0;
+            if (q > $util.recursionLimit)
+                throw Error("max depth exceeded");
+            let object = {};
+            if (options.arrays || options.defaults)
+                object.counts = [];
+            if (options.defaults) {
+                object.min = 0;
+                object.max = 0;
+            }
+            if (message.min != null && Object.hasOwnProperty.call(message, "min"))
+                object.min = options.json && !isFinite(message.min) ? String(message.min) : message.min;
+            if (message.max != null && Object.hasOwnProperty.call(message, "max"))
+                object.max = options.json && !isFinite(message.max) ? String(message.max) : message.max;
+            if (message.counts && message.counts.length) {
+                object.counts = [];
+                for (let j = 0; j < message.counts.length; ++j)
+                    object.counts[j] = message.counts[j];
+            }
+            return object;
+        };
+
+        /**
+         * Converts this Histogram to JSON.
+         * @function toJSON
+         * @memberof velobench.Histogram
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        Histogram.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for Histogram
+         * @function getTypeUrl
+         * @memberof velobench.Histogram
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        Histogram.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/velobench.Histogram";
+        };
+
+        return Histogram;
+    })();
+
     velobench.Stats = (function() {
 
         /**
@@ -3930,14 +4250,20 @@ export const velobench = $root.velobench = (() => {
          * @memberof velobench
          * @interface IStats
          * @property {Array.<velobench.IDecodePoint>|null} [decode] Stats decode
-         * @property {Array.<number>|null} [latencies] Stats latencies
          * @property {velobench.ILiveStat|null} [live] Stats live
          * @property {velobench.IClusterResult|null} [clusters] Stats clusters
          * @property {Array.<velobench.IAcceptancePoint>|null} [acceptance] Stats acceptance
          * @property {Array.<velobench.ISpecDepthPoint>|null} [specDepth] Stats specDepth
          * @property {Array.<velobench.IRegime>|null} [regimes] Stats regimes
          * @property {string|null} [category] Stats category
-         * @property {number|null} [histMax] Stats histMax
+         * @property {Array.<velobench.IAcceptancePoint>|null} [acceptanceMa] Stats acceptanceMa
+         * @property {number|null} [itlP90] Stats itlP90
+         * @property {string|null} [stability] Stats stability
+         * @property {number|null} [rateCount] Stats rateCount
+         * @property {velobench.IHistogram|null} [rateHist] Stats rateHist
+         * @property {velobench.IHistogram|null} [latencyHist] Stats latencyHist
+         * @property {number|null} [latencyCount] Stats latencyCount
+         * @property {string|null} [latencyLabel] Stats latencyLabel
          */
 
         /**
@@ -3950,10 +4276,10 @@ export const velobench = $root.velobench = (() => {
          */
         function Stats(properties) {
             this.decode = [];
-            this.latencies = [];
             this.acceptance = [];
             this.specDepth = [];
             this.regimes = [];
+            this.acceptanceMa = [];
             if (properties)
                 for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null && keys[i] !== "__proto__")
@@ -3967,14 +4293,6 @@ export const velobench = $root.velobench = (() => {
          * @instance
          */
         Stats.prototype.decode = $util.emptyArray;
-
-        /**
-         * Stats latencies.
-         * @member {Array.<number>} latencies
-         * @memberof velobench.Stats
-         * @instance
-         */
-        Stats.prototype.latencies = $util.emptyArray;
 
         /**
          * Stats live.
@@ -4025,12 +4343,68 @@ export const velobench = $root.velobench = (() => {
         Stats.prototype.category = "";
 
         /**
-         * Stats histMax.
-         * @member {number} histMax
+         * Stats acceptanceMa.
+         * @member {Array.<velobench.IAcceptancePoint>} acceptanceMa
          * @memberof velobench.Stats
          * @instance
          */
-        Stats.prototype.histMax = 0;
+        Stats.prototype.acceptanceMa = $util.emptyArray;
+
+        /**
+         * Stats itlP90.
+         * @member {number} itlP90
+         * @memberof velobench.Stats
+         * @instance
+         */
+        Stats.prototype.itlP90 = 0;
+
+        /**
+         * Stats stability.
+         * @member {string} stability
+         * @memberof velobench.Stats
+         * @instance
+         */
+        Stats.prototype.stability = "";
+
+        /**
+         * Stats rateCount.
+         * @member {number} rateCount
+         * @memberof velobench.Stats
+         * @instance
+         */
+        Stats.prototype.rateCount = 0;
+
+        /**
+         * Stats rateHist.
+         * @member {velobench.IHistogram|null|undefined} rateHist
+         * @memberof velobench.Stats
+         * @instance
+         */
+        Stats.prototype.rateHist = null;
+
+        /**
+         * Stats latencyHist.
+         * @member {velobench.IHistogram|null|undefined} latencyHist
+         * @memberof velobench.Stats
+         * @instance
+         */
+        Stats.prototype.latencyHist = null;
+
+        /**
+         * Stats latencyCount.
+         * @member {number} latencyCount
+         * @memberof velobench.Stats
+         * @instance
+         */
+        Stats.prototype.latencyCount = 0;
+
+        /**
+         * Stats latencyLabel.
+         * @member {string} latencyLabel
+         * @memberof velobench.Stats
+         * @instance
+         */
+        Stats.prototype.latencyLabel = "";
 
         /**
          * Creates a new Stats instance using the specified properties.
@@ -4063,12 +4437,6 @@ export const velobench = $root.velobench = (() => {
             if (message.decode != null && message.decode.length)
                 for (let i = 0; i < message.decode.length; ++i)
                     $root.velobench.DecodePoint.encode(message.decode[i], writer.uint32(/* id 1, wireType 2 =*/10).fork(), q + 1).ldelim();
-            if (message.latencies != null && message.latencies.length) {
-                writer.uint32(/* id 2, wireType 2 =*/18).fork();
-                for (let i = 0; i < message.latencies.length; ++i)
-                    writer.double(message.latencies[i]);
-                writer.ldelim();
-            }
             if (message.live != null && Object.hasOwnProperty.call(message, "live"))
                 $root.velobench.LiveStat.encode(message.live, writer.uint32(/* id 3, wireType 2 =*/26).fork(), q + 1).ldelim();
             if (message.clusters != null && Object.hasOwnProperty.call(message, "clusters"))
@@ -4084,8 +4452,23 @@ export const velobench = $root.velobench = (() => {
                     $root.velobench.Regime.encode(message.regimes[i], writer.uint32(/* id 7, wireType 2 =*/58).fork(), q + 1).ldelim();
             if (message.category != null && Object.hasOwnProperty.call(message, "category"))
                 writer.uint32(/* id 8, wireType 2 =*/66).string(message.category);
-            if (message.histMax != null && Object.hasOwnProperty.call(message, "histMax"))
-                writer.uint32(/* id 9, wireType 1 =*/73).double(message.histMax);
+            if (message.acceptanceMa != null && message.acceptanceMa.length)
+                for (let i = 0; i < message.acceptanceMa.length; ++i)
+                    $root.velobench.AcceptancePoint.encode(message.acceptanceMa[i], writer.uint32(/* id 10, wireType 2 =*/82).fork(), q + 1).ldelim();
+            if (message.itlP90 != null && Object.hasOwnProperty.call(message, "itlP90"))
+                writer.uint32(/* id 11, wireType 1 =*/89).double(message.itlP90);
+            if (message.stability != null && Object.hasOwnProperty.call(message, "stability"))
+                writer.uint32(/* id 12, wireType 2 =*/98).string(message.stability);
+            if (message.rateCount != null && Object.hasOwnProperty.call(message, "rateCount"))
+                writer.uint32(/* id 13, wireType 0 =*/104).uint32(message.rateCount);
+            if (message.latencyLabel != null && Object.hasOwnProperty.call(message, "latencyLabel"))
+                writer.uint32(/* id 14, wireType 2 =*/114).string(message.latencyLabel);
+            if (message.rateHist != null && Object.hasOwnProperty.call(message, "rateHist"))
+                $root.velobench.Histogram.encode(message.rateHist, writer.uint32(/* id 15, wireType 2 =*/122).fork(), q + 1).ldelim();
+            if (message.latencyHist != null && Object.hasOwnProperty.call(message, "latencyHist"))
+                $root.velobench.Histogram.encode(message.latencyHist, writer.uint32(/* id 16, wireType 2 =*/130).fork(), q + 1).ldelim();
+            if (message.latencyCount != null && Object.hasOwnProperty.call(message, "latencyCount"))
+                writer.uint32(/* id 17, wireType 0 =*/136).uint32(message.latencyCount);
             return writer;
         };
 
@@ -4142,23 +4525,6 @@ export const velobench = $root.velobench = (() => {
                         message.decode.push($root.velobench.DecodePoint.decode(reader, reader.uint32(), undefined, long + 1));
                         break;
                     }
-                case 2: {
-                        if (!(message.latencies && message.latencies.length))
-                            message.latencies = [];
-                        if ((tag & 7) === 2) {
-                            let end2 = reader.uint32() + reader.pos;
-                            if (end2 > reader.len)
-                                throw RangeError("index out of range");
-                            reader.len = end2;
-                            while (reader.pos < end2)
-                                message.latencies.push(reader.double());
-                            if (reader.pos !== end2)
-                                throw RangeError("index out of range");
-                            reader.len = end;
-                        } else
-                            message.latencies.push(reader.double());
-                        break;
-                    }
                 case 3: {
                         message.live = $root.velobench.LiveStat.decode(reader, reader.uint32(), undefined, long + 1);
                         break;
@@ -4189,8 +4555,38 @@ export const velobench = $root.velobench = (() => {
                         message.category = reader.string();
                         break;
                     }
-                case 9: {
-                        message.histMax = reader.double();
+                case 10: {
+                        if (!(message.acceptanceMa && message.acceptanceMa.length))
+                            message.acceptanceMa = [];
+                        message.acceptanceMa.push($root.velobench.AcceptancePoint.decode(reader, reader.uint32(), undefined, long + 1));
+                        break;
+                    }
+                case 11: {
+                        message.itlP90 = reader.double();
+                        break;
+                    }
+                case 12: {
+                        message.stability = reader.string();
+                        break;
+                    }
+                case 13: {
+                        message.rateCount = reader.uint32();
+                        break;
+                    }
+                case 15: {
+                        message.rateHist = $root.velobench.Histogram.decode(reader, reader.uint32(), undefined, long + 1);
+                        break;
+                    }
+                case 16: {
+                        message.latencyHist = $root.velobench.Histogram.decode(reader, reader.uint32(), undefined, long + 1);
+                        break;
+                    }
+                case 17: {
+                        message.latencyCount = reader.uint32();
+                        break;
+                    }
+                case 14: {
+                        message.latencyLabel = reader.string();
                         break;
                     }
                 default:
@@ -4246,13 +4642,6 @@ export const velobench = $root.velobench = (() => {
                         return "decode." + error;
                 }
             }
-            if (message.latencies != null && Object.hasOwnProperty.call(message, "latencies")) {
-                if (!Array.isArray(message.latencies))
-                    return "latencies: array expected";
-                for (let i = 0; i < message.latencies.length; ++i)
-                    if (typeof message.latencies[i] !== "number")
-                        return "latencies: number[] expected";
-            }
             if (message.live != null && Object.hasOwnProperty.call(message, "live")) {
                 let error = $root.velobench.LiveStat.verify(message.live, long + 1);
                 if (error)
@@ -4293,9 +4682,40 @@ export const velobench = $root.velobench = (() => {
             if (message.category != null && Object.hasOwnProperty.call(message, "category"))
                 if (!$util.isString(message.category))
                     return "category: string expected";
-            if (message.histMax != null && Object.hasOwnProperty.call(message, "histMax"))
-                if (typeof message.histMax !== "number")
-                    return "histMax: number expected";
+            if (message.acceptanceMa != null && Object.hasOwnProperty.call(message, "acceptanceMa")) {
+                if (!Array.isArray(message.acceptanceMa))
+                    return "acceptanceMa: array expected";
+                for (let i = 0; i < message.acceptanceMa.length; ++i) {
+                    let error = $root.velobench.AcceptancePoint.verify(message.acceptanceMa[i], long + 1);
+                    if (error)
+                        return "acceptanceMa." + error;
+                }
+            }
+            if (message.itlP90 != null && Object.hasOwnProperty.call(message, "itlP90"))
+                if (typeof message.itlP90 !== "number")
+                    return "itlP90: number expected";
+            if (message.stability != null && Object.hasOwnProperty.call(message, "stability"))
+                if (!$util.isString(message.stability))
+                    return "stability: string expected";
+            if (message.rateCount != null && Object.hasOwnProperty.call(message, "rateCount"))
+                if (!$util.isInteger(message.rateCount))
+                    return "rateCount: integer expected";
+            if (message.rateHist != null && Object.hasOwnProperty.call(message, "rateHist")) {
+                let error = $root.velobench.Histogram.verify(message.rateHist, long + 1);
+                if (error)
+                    return "rateHist." + error;
+            }
+            if (message.latencyHist != null && Object.hasOwnProperty.call(message, "latencyHist")) {
+                let error = $root.velobench.Histogram.verify(message.latencyHist, long + 1);
+                if (error)
+                    return "latencyHist." + error;
+            }
+            if (message.latencyCount != null && Object.hasOwnProperty.call(message, "latencyCount"))
+                if (!$util.isInteger(message.latencyCount))
+                    return "latencyCount: integer expected";
+            if (message.latencyLabel != null && Object.hasOwnProperty.call(message, "latencyLabel"))
+                if (!$util.isString(message.latencyLabel))
+                    return "latencyLabel: string expected";
             return null;
         };
 
@@ -4326,13 +4746,6 @@ export const velobench = $root.velobench = (() => {
                         throw TypeError(".velobench.Stats.decode: object expected");
                     message.decode[i] = $root.velobench.DecodePoint.fromObject(object.decode[i], long + 1);
                 }
-            }
-            if (object.latencies) {
-                if (!Array.isArray(object.latencies))
-                    throw TypeError(".velobench.Stats.latencies: array expected");
-                message.latencies = [];
-                for (let i = 0; i < object.latencies.length; ++i)
-                    message.latencies[i] = Number(object.latencies[i]);
             }
             if (object.live != null) {
                 if (!$util.isObject(object.live))
@@ -4376,8 +4789,36 @@ export const velobench = $root.velobench = (() => {
             }
             if (object.category != null)
                 message.category = String(object.category);
-            if (object.histMax != null)
-                message.histMax = Number(object.histMax);
+            if (object.acceptanceMa) {
+                if (!Array.isArray(object.acceptanceMa))
+                    throw TypeError(".velobench.Stats.acceptanceMa: array expected");
+                message.acceptanceMa = [];
+                for (let i = 0; i < object.acceptanceMa.length; ++i) {
+                    if (!$util.isObject(object.acceptanceMa[i]))
+                        throw TypeError(".velobench.Stats.acceptanceMa: object expected");
+                    message.acceptanceMa[i] = $root.velobench.AcceptancePoint.fromObject(object.acceptanceMa[i], long + 1);
+                }
+            }
+            if (object.itlP90 != null)
+                message.itlP90 = Number(object.itlP90);
+            if (object.stability != null)
+                message.stability = String(object.stability);
+            if (object.rateCount != null)
+                message.rateCount = object.rateCount >>> 0;
+            if (object.rateHist != null) {
+                if (!$util.isObject(object.rateHist))
+                    throw TypeError(".velobench.Stats.rateHist: object expected");
+                message.rateHist = $root.velobench.Histogram.fromObject(object.rateHist, long + 1);
+            }
+            if (object.latencyHist != null) {
+                if (!$util.isObject(object.latencyHist))
+                    throw TypeError(".velobench.Stats.latencyHist: object expected");
+                message.latencyHist = $root.velobench.Histogram.fromObject(object.latencyHist, long + 1);
+            }
+            if (object.latencyCount != null)
+                message.latencyCount = object.latencyCount >>> 0;
+            if (object.latencyLabel != null)
+                message.latencyLabel = String(object.latencyLabel);
             return message;
         };
 
@@ -4400,26 +4841,27 @@ export const velobench = $root.velobench = (() => {
             let object = {};
             if (options.arrays || options.defaults) {
                 object.decode = [];
-                object.latencies = [];
                 object.acceptance = [];
                 object.specDepth = [];
                 object.regimes = [];
+                object.acceptanceMa = [];
             }
             if (options.defaults) {
                 object.live = null;
                 object.clusters = null;
                 object.category = "";
-                object.histMax = 0;
+                object.itlP90 = 0;
+                object.stability = "";
+                object.rateCount = 0;
+                object.latencyLabel = "";
+                object.rateHist = null;
+                object.latencyHist = null;
+                object.latencyCount = 0;
             }
             if (message.decode && message.decode.length) {
                 object.decode = [];
                 for (let j = 0; j < message.decode.length; ++j)
                     object.decode[j] = $root.velobench.DecodePoint.toObject(message.decode[j], options, q + 1);
-            }
-            if (message.latencies && message.latencies.length) {
-                object.latencies = [];
-                for (let j = 0; j < message.latencies.length; ++j)
-                    object.latencies[j] = options.json && !isFinite(message.latencies[j]) ? String(message.latencies[j]) : message.latencies[j];
             }
             if (message.live != null && Object.hasOwnProperty.call(message, "live"))
                 object.live = $root.velobench.LiveStat.toObject(message.live, options, q + 1);
@@ -4442,8 +4884,25 @@ export const velobench = $root.velobench = (() => {
             }
             if (message.category != null && Object.hasOwnProperty.call(message, "category"))
                 object.category = message.category;
-            if (message.histMax != null && Object.hasOwnProperty.call(message, "histMax"))
-                object.histMax = options.json && !isFinite(message.histMax) ? String(message.histMax) : message.histMax;
+            if (message.acceptanceMa && message.acceptanceMa.length) {
+                object.acceptanceMa = [];
+                for (let j = 0; j < message.acceptanceMa.length; ++j)
+                    object.acceptanceMa[j] = $root.velobench.AcceptancePoint.toObject(message.acceptanceMa[j], options, q + 1);
+            }
+            if (message.itlP90 != null && Object.hasOwnProperty.call(message, "itlP90"))
+                object.itlP90 = options.json && !isFinite(message.itlP90) ? String(message.itlP90) : message.itlP90;
+            if (message.stability != null && Object.hasOwnProperty.call(message, "stability"))
+                object.stability = message.stability;
+            if (message.rateCount != null && Object.hasOwnProperty.call(message, "rateCount"))
+                object.rateCount = message.rateCount;
+            if (message.latencyLabel != null && Object.hasOwnProperty.call(message, "latencyLabel"))
+                object.latencyLabel = message.latencyLabel;
+            if (message.rateHist != null && Object.hasOwnProperty.call(message, "rateHist"))
+                object.rateHist = $root.velobench.Histogram.toObject(message.rateHist, options, q + 1);
+            if (message.latencyHist != null && Object.hasOwnProperty.call(message, "latencyHist"))
+                object.latencyHist = $root.velobench.Histogram.toObject(message.latencyHist, options, q + 1);
+            if (message.latencyCount != null && Object.hasOwnProperty.call(message, "latencyCount"))
+                object.latencyCount = message.latencyCount;
             return object;
         };
 
@@ -4489,6 +4948,7 @@ export const velobench = $root.velobench = (() => {
          * @property {number|null} [medianTokS] Regime medianTokS
          * @property {number|null} [maxTokS] Regime maxTokS
          * @property {Array.<velobench.IDecodePoint>|null} [samples] Regime samples
+         * @property {number|null} [decodeMs] Regime decodeMs
          */
 
         /**
@@ -4564,6 +5024,14 @@ export const velobench = $root.velobench = (() => {
         Regime.prototype.samples = $util.emptyArray;
 
         /**
+         * Regime decodeMs.
+         * @member {number} decodeMs
+         * @memberof velobench.Regime
+         * @instance
+         */
+        Regime.prototype.decodeMs = 0;
+
+        /**
          * Creates a new Regime instance using the specified properties.
          * @function create
          * @memberof velobench.Regime
@@ -4606,6 +5074,8 @@ export const velobench = $root.velobench = (() => {
             if (message.samples != null && message.samples.length)
                 for (let i = 0; i < message.samples.length; ++i)
                     $root.velobench.DecodePoint.encode(message.samples[i], writer.uint32(/* id 7, wireType 2 =*/58).fork(), q + 1).ldelim();
+            if (message.decodeMs != null && Object.hasOwnProperty.call(message, "decodeMs"))
+                writer.uint32(/* id 8, wireType 1 =*/65).double(message.decodeMs);
             return writer;
         };
 
@@ -4686,6 +5156,10 @@ export const velobench = $root.velobench = (() => {
                         message.samples.push($root.velobench.DecodePoint.decode(reader, reader.uint32(), undefined, long + 1));
                         break;
                     }
+                case 8: {
+                        message.decodeMs = reader.double();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7, long);
                     break;
@@ -4757,6 +5231,9 @@ export const velobench = $root.velobench = (() => {
                         return "samples." + error;
                 }
             }
+            if (message.decodeMs != null && Object.hasOwnProperty.call(message, "decodeMs"))
+                if (typeof message.decodeMs !== "number")
+                    return "decodeMs: number expected";
             return null;
         };
 
@@ -4800,6 +5277,8 @@ export const velobench = $root.velobench = (() => {
                     message.samples[i] = $root.velobench.DecodePoint.fromObject(object.samples[i], long + 1);
                 }
             }
+            if (object.decodeMs != null)
+                message.decodeMs = Number(object.decodeMs);
             return message;
         };
 
@@ -4829,6 +5308,7 @@ export const velobench = $root.velobench = (() => {
                 object.minTokS = 0;
                 object.medianTokS = 0;
                 object.maxTokS = 0;
+                object.decodeMs = 0;
             }
             if (message.category != null && Object.hasOwnProperty.call(message, "category"))
                 object.category = message.category;
@@ -4847,6 +5327,8 @@ export const velobench = $root.velobench = (() => {
                 for (let j = 0; j < message.samples.length; ++j)
                     object.samples[j] = $root.velobench.DecodePoint.toObject(message.samples[j], options, q + 1);
             }
+            if (message.decodeMs != null && Object.hasOwnProperty.call(message, "decodeMs"))
+                object.decodeMs = options.json && !isFinite(message.decodeMs) ? String(message.decodeMs) : message.decodeMs;
             return object;
         };
 

@@ -7,7 +7,7 @@ single-binary, zero-dependency tool.
 
 - **`http://` only on the emitter side.** The serving engine's dependency-free
   HTTP client does not speak TLS; `https://` endpoints are refused at startup.
-  Keep the telemetry path on a trusted LAN (this is also why VeloBenchmarkmark's
+  Keep the telemetry path on a trusted LAN (this is also why VeloBenchmark's
   receiver has no TLS/auth).
 - **Lossy by design.** Telemetry must never hurt decode: if the receiver is
   slow or down, rows are dropped (logged, throttled) rather than queued. A
@@ -63,7 +63,7 @@ single-binary, zero-dependency tool.
 
 ## Platform & data
 
-- **Single-user, no auth.** VeloBenchmarkmark is a personal/team console for a
+- **Single-user, no auth.** VeloBenchmark is a personal/team console for a
   trusted network. The web UI and API have no authentication; do not expose
   it publicly.
 - **Local file storage.** Everything (settings, sessions, tests, comparisons)
@@ -74,6 +74,11 @@ single-binary, zero-dependency tool.
 - **Built-in tests refresh on boot.** User edits to built-in test definitions
   are overwritten at every server start (by design — they are reference
   suites). Favourite marks survive; your own tests are never touched.
+- **Timings are engine↔backend only.** Every token is timestamped the moment
+  its bytes arrive from the inference engine (a dedicated reader task), and a
+  turn's totals are closed at the engine's end-of-stream. A slow browser or
+  WebSocket can delay what you *see*, never what is *measured*; the backend
+  coalesces UI frames while the browser catches up.
 - **The UI speaks one protocol.** Browser↔server traffic uses a compact
   protobuf WebSocket schema (`proto/velobench.proto`). Changing it requires
   regenerating both sides; there is no compatibility shim across versions.

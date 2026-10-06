@@ -34,6 +34,75 @@ pub struct ParsedDelta {
     pub usage: Option<(f64, f64, Option<f64>, Option<u64>, Option<u64>)>,
 }
 
+/// What the upstream reader hands to the processor.
+pub enum Upstream {
+    /// A delta, stamped with the moment its bytes arrived from the engine.
+    Delta(f64, ParsedDelta),
+    /// The engine's stream ended (or was cancelled) at this timestamp.
+    End(f64),
+}
+
+/// Read the engine's SSE stream on its OWN task and stamp every delta the
+/// instant its bytes arrive. This task never touches the engine stats, the
+/// socket or the UI, so nothing downstream (stats processing, a slow
+/// WebSocket, a backlogged browser) can delay a timestamp: the measurement
+/// is purely engine <-> backend. Consumers drain the returned queue at
+/// their own pace.
+pub fn spawn_upstream_reader(
+    res: reqwest::Response,
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> tokio::sync::mpsc::UnboundedReceiver<Upstream> {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let mut stream = res.bytes_stream();
+        let mut buf = String::new();
+        loop {
+            let next = tokio::select! {
+                _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {
+                    // Stop must win even when the provider stalls.
+                    if cancel.as_ref().map(|f| f.load(std::sync::atomic::Ordering::Relaxed)).unwrap_or(false) {
+                        break;
+                    }
+                    continue;
+                }
+                c = stream.next() => c,
+            };
+            // Arrival stamp: taken before any parsing or queueing.
+            let ts = now_ms();
+            let Some(chunk) = next else { break };
+            let chunk = match chunk {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!("ws: stream error: {e}");
+                    break;
+                }
+            };
+            buf.push_str(&String::from_utf8_lossy(&chunk));
+            while let Some(idx) = buf.find("\n\n") {
+                let event = buf[..idx].to_string();
+                buf.drain(..idx + 2);
+                for line in event.split('\n') {
+                    let line = line.trim();
+                    if !line.starts_with("data:") {
+                        continue;
+                    }
+                    let payload = line.trim_start_matches("data:").trim_start();
+                    if payload == "[DONE]" {
+                        continue;
+                    }
+                    if let Some(p) = parse_delta(payload) {
+                        let _ = tx.send(Upstream::Delta(ts, p));
+                    }
+                }
+            }
+        }
+        // Dropping `stream` closes the upstream connection (tells the
+        // provider to stop on a cancel).
+        let _ = tx.send(Upstream::End(now_ms()));
+    });
+    rx
+}
+
 /// A live in-flight run: sockets that re-attach after a page reload subscribe
 /// to the frame broadcast, and get the accumulated text as an instant
 /// snapshot (so the restored chat continues seamlessly). The run also carries
@@ -286,104 +355,85 @@ async fn run(mut socket: WebSocket, st: AppState) {
         }
     };
     tracing::debug!("ws: proxy stream ok (status {})", res.status().as_u16());
-    let mut buf = String::new();
-    let mut stream = res.bytes_stream();
     // Two very different end states must not be conflated (review F2 vs the
     // persistence the review praised):
     //   - cancel requested (explicit Stop)  → stop upstream, record CANCELLED.
     //   - client vanished (reload/nav away) → KEEP consuming upstream to the
     //     end and record COMPLETE; the user can reload the finished result.
-    let mut was_cancelled = false;
+    //
+    // Timing is engine <-> backend ONLY. The reader task stamps each delta on
+    // arrival; this loop merely applies stamped deltas to the stats engine in
+    // batches and forwards them to the UI as fast as the UI can take them. A
+    // slow socket or a heavy stats refresh grows the queue, never the timings.
+    let cancel_flag = if request.request_id.is_empty() {
+        None
+    } else {
+        st.cancels.lock().await.get(&request.request_id).cloned()
+    };
+    let mut rx = spawn_upstream_reader(res, cancel_flag);
     let mut client_gone = false;
-    // Cancel must win even when the provider stream STALLS: the flag check
-    // races the chunk read on a short timer, so Stop acknowledges within
-    // ~250 ms instead of hanging until the next chunk (or forever).
-    loop {
-        let next = tokio::select! {
-            _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {
-                if cancelled() {
-                    // Acknowledged Stop: drop the upstream response (closing
-                    // the connection tells the provider to stop generating)
-                    // and finalize the turn with its partial output marked
-                    // cancelled.
-                    was_cancelled = true;
-                    break;
+    let mut end_ts = now_ms();
+    'run: loop {
+        let Some(first) = rx.recv().await else { break };
+        let mut batch = vec![first];
+        while let Ok(more) = rx.try_recv() {
+            batch.push(more);
+        }
+        let mut merged_content = String::new();
+        let mut merged_reasoning = String::new();
+        let mut ended = false;
+        for item in batch {
+            match item {
+                Upstream::End(ts) => {
+                    end_ts = ts;
+                    ended = true;
                 }
-                continue;
-            }
-            c = stream.next() => c,
-        };
-        let Some(chunk) = next else { break };
-        let chunk = match chunk {
-            Ok(b) => b,
-            Err(e) => {
-                tracing::warn!("ws: stream error: {e}");
-                break;
-            }
-        };
-        buf.push_str(&String::from_utf8_lossy(&chunk));
-        while let Some(idx) = buf.find("\n\n") {
-            let event = buf[..idx].to_string();
-            buf.drain(..idx + 2);
-            for line in event.split('\n') {
-                let line = line.trim();
-                if !line.starts_with("data:") {
-                    continue;
-                }
-                let payload = line.trim_start_matches("data:").trim_start();
-                if payload == "[DONE]" {
-                    // fallthrough below
-                    continue;
-                }
-                let parsed = parse_delta(payload);
-                if let Some(p) = parsed {
+                Upstream::Delta(ts, p) => {
                     if let Some(r) = &p.finish_reason {
                         engine.set_finish_reason(r);
                     }
-                    // One timestamp per delta, so a content+reasoning pair sharing
-                    // a chunk isn't counted as a (false) inter-token gap.
-                    let ts = now_ms();
                     if !p.content.is_empty() {
-                        engine.record_delta("content", &p.content, ts);
+                        engine.record_delta_raw("content", &p.content, ts);
                     }
                     if !p.reasoning.is_empty() {
-                        engine.record_delta("reasoning", &p.reasoning, ts);
+                        engine.record_delta_raw("reasoning", &p.reasoning, ts);
                     }
                     if let Some((c, pr, rt, acc, rej)) = p.usage {
                         engine.set_usage(Some(c), Some(pr), rt);
                         engine.set_usage_spec(acc, rej);
                     }
-                    let frame = ServerFrame { payload: Some(server_frame::Payload::Delta(DeltaFrame { content: p.content.clone(), reasoning: p.reasoning.clone() })) };
-                    let sframe = build_stats_frame(&engine);
-                    // Broadcast to any sockets that resumed this run after a
-                    // reload; the original socket gets a direct copy below.
-                    if let Some(l) = &live {
-                        {
-                            let mut b = l.buf.lock().unwrap();
-                            b.content.push_str(&p.content);
-                            b.reasoning.push_str(&p.reasoning);
-                        }
-                        let _ = l.tx.send(frame.clone());
-                        let _ = l.tx.send(sframe.clone());
-                    }
-                    if client_gone {
-                        continue;
-                    }
-                    if send_frame(&mut socket, &frame).await.is_err() {
-                        client_gone = true;
-                        continue;
-                    }
-                    // Push the latest computed stats immediately (when the server
-                    // has it), not on a fixed interval.
-                    if send_frame(&mut socket, &sframe).await.is_err() {
-                        client_gone = true;
-                    }
+                    merged_content.push_str(&p.content);
+                    merged_reasoning.push_str(&p.reasoning);
                 }
             }
         }
+        if !merged_content.is_empty() || !merged_reasoning.is_empty() {
+            engine.refresh();
+            let frame = ServerFrame { payload: Some(server_frame::Payload::Delta(DeltaFrame { content: merged_content.clone(), reasoning: merged_reasoning.clone() })) };
+            let sframe = build_stats_frame(&engine);
+            // Broadcast to any sockets that resumed this run after a reload;
+            // the original socket gets a direct copy below.
+            if let Some(l) = &live {
+                {
+                    let mut b = l.buf.lock().unwrap();
+                    b.content.push_str(&merged_content);
+                    b.reasoning.push_str(&merged_reasoning);
+                }
+                let _ = l.tx.send(frame.clone());
+                let _ = l.tx.send(sframe.clone());
+            }
+            if !client_gone {
+                if send_frame(&mut socket, &frame).await.is_err()
+                    || send_frame(&mut socket, &sframe).await.is_err()
+                {
+                    client_gone = true;
+                }
+            }
+        }
+        if ended {
+            break 'run;
+        }
     }
-    drop(stream);
-    drop(buf);
     // A vanished socket alone is NOT a cancellation: only an explicit Stop
     // (cancel flag) marks the turn cancelled.
     let was_cancelled = cancelled();
@@ -399,9 +449,9 @@ async fn run(mut socket: WebSocket, st: AppState) {
     // minutes after the stream was already stopped. Estimates (snapping to
     // provider usage when it arrived) are plenty for a cancelled partial.
     let gen = if was_cancelled {
-        engine.finish(now_ms())
+        engine.finish(end_ts)
     } else {
-        engine.finish_exact(&st.http, handle.as_deref(), now_ms()).await
+        engine.finish_exact(&st.http, handle.as_deref(), end_ts).await
     };
 
     // No helper-LLM work happens here — by design. The live stats path is a
@@ -800,9 +850,14 @@ async fn send_frame(socket: &mut WebSocket, frame: &ServerFrame) -> Result<(), (
     socket.send(Message::Binary(b)).await.map_err(|_| ())
 }
 
+fn hist_pb(h: &crate::histogram::Histogram) -> crate::proto::velobench::Histogram {
+    crate::proto::velobench::Histogram { min: h.min, max: h.max, counts: h.counts.clone() }
+}
+
 fn build_stats_frame(engine: &StatsEngine) -> ServerFrame {
     let a: &SessionAnalytics = engine.analytics();
     let live = engine.live();
+    let derived = crate::stats::panel_derived(live, a);
     let stats = Stats {
         decode: a.samples.iter().map(|s| DecodePoint {
             t_ms: s.t_ms,
@@ -810,7 +865,6 @@ fn build_stats_frame(engine: &StatsEngine) -> ServerFrame {
             kind: s.kind.clone(),
             regime: s.regime.clone().unwrap_or_default(),
         }).collect(),
-        latencies: a.latencies.clone(),
         live: Some(LiveStat {
             tok_s: live.tok_s,
             avg: live.avg,
@@ -845,6 +899,7 @@ fn build_stats_frame(engine: &StatsEngine) -> ServerFrame {
             min_tok_s: r.min_tok_s,
             median_tok_s: r.median_tok_s,
             max_tok_s: r.max_tok_s,
+            decode_ms: crate::stats::regime_decode_ms(r),
             samples: r.samples.iter().map(|s| DecodePoint {
                 t_ms: s.t_ms,
                 tok_s: s.tok_s,
@@ -853,7 +908,14 @@ fn build_stats_frame(engine: &StatsEngine) -> ServerFrame {
             }).collect(),
         }).collect(),
         category: engine.category().unwrap_or_default().to_string(),
-        hist_max: histogram_max(&a.latencies, a.clusters.as_ref()),
+        acceptance_ma: derived.acceptance_ma.iter().map(|p| AcceptancePoint { t: p.t, rate: p.rate }).collect(),
+        itl_p90: derived.itl_p90.unwrap_or(0.0),
+        stability: derived.stability,
+        rate_count: derived.rate_count,
+        latency_label: derived.latency_label,
+        rate_hist: derived.rate_hist.as_ref().map(hist_pb),
+        latency_hist: derived.latency_hist.as_ref().map(hist_pb),
+        latency_count: derived.latency_count,
     };
     ServerFrame { payload: Some(server_frame::Payload::Stats(stats)) }
 }
@@ -861,6 +923,10 @@ fn build_stats_frame(engine: &StatsEngine) -> ServerFrame {
 /// Robust upper bound for the latency histogram. When a bimodal split exists we
 /// cap just past the high-latency mode (high cluster median * margin), so stall
 /// outliers don't zoom the graph out; otherwise fall back to the 95th percentile.
+pub(crate) fn histogram_max_pub(latencies: &[f64], clusters: Option<&LatencyClusterResult>) -> f64 {
+    histogram_max(latencies, clusters)
+}
+
 fn histogram_max(latencies: &[f64], clusters: Option<&LatencyClusterResult>) -> f64 {
     if latencies.is_empty() {
         return 0.0;
@@ -1380,7 +1446,10 @@ mod tests {
         let payload = dec.payload.unwrap();
         if let server_frame::Payload::Stats(s) = payload {
             assert!(s.decode.len() > 0);
-            assert!(!s.latencies.is_empty());
+            // distributions arrive pre-binned: 39 positive gaps, every one in a bin
+            assert_eq!(s.latency_count, 39);
+            let lh = s.latency_hist.as_ref().expect("latency histogram");
+            assert_eq!(lh.counts.iter().sum::<u32>(), 39);
             assert!(s.live.is_some());
         } else {
             panic!("expected Stats frame");

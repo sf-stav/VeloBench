@@ -46,7 +46,7 @@
             </div>
             <div class="muted small srow-meta">
               {{ g.turns.length }} turn(s) · {{ fmtDate(g.createdAt) }} · <span class="mono">{{ g.session.slice(0, 8) }}</span>
-              @if (overallTokS(g); as r) {
+              @if (g.overallTokS; as r) {
                 · <span class="mono">{{ r.toFixed(1) }} tok/s</span>
               }
               · <span class="mono">{{ g.totalTokens }} tok</span>
@@ -85,7 +85,7 @@
             </div>
             <div class="muted small srow-meta">
               {{ g.turns.length }} turn(s) · {{ fmtDate(g.createdAt) }} · <span class="mono">{{ g.session.slice(0, 8) }}</span>
-              @if (overallTokS(g); as r) {
+              @if (g.overallTokS; as r) {
                 · <span class="mono">{{ r.toFixed(1) }} tok/s</span>
               }
               · <span class="mono">{{ g.totalTokens }} tok</span>

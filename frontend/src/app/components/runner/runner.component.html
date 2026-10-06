@@ -59,14 +59,14 @@
       }
       <div class="agg mono small">
         <span>workers {{ r.workers }}</span>
-        <span>running {{ runningCount(r) }}</span>
-        <span>done {{ doneCount(r) }}</span>
-        @if (hasRates(r)) {
-          <span class="strong" title="Σ of the workers' sustained decode rates — workers with fewer than 2 tokens have no measurable rate and are excluded">Σ {{ sumTokS(r).toFixed(1) }} tok/s</span>
+        <span>running {{ r.running }}</span>
+        <span>done {{ r.done }}</span>
+        @if (r.sum_tok_s != null) {
+          <span class="strong" title="Σ of the workers' sustained decode rates — workers with fewer than 2 tokens have no measurable rate and are excluded">Σ {{ r.sum_tok_s.toFixed(1) }} tok/s</span>
         } @else {
           <span class="dim" title="A rate needs at least 2 tokens per worker: one token has no inter-token interval to measure">Σ tok/s insufficient data</span>
         }
-        <span>{{ fmtN(sumTokens(r)) }} tok total</span>
+        <span>{{ fmtN(r.sum_tokens) }} tok total</span>
       </div>
       <div class="grid">
         @for (w of r.snaps; track w.idx) {
@@ -81,13 +81,13 @@
               }
             </div>
             <div class="wstats mono">
-              @if (rateOf(w) != null) {
-                <span class="strong">{{ rateOf(w)!.toFixed(1) }}</span> tok/s
+              @if (w.rate != null) {
+                <span class="strong">{{ w.rate.toFixed(1) }}</span> tok/s
               } @else {
                 <span class="dim" title="Fewer than 2 tokens: no sustained rate can be measured">rate n/a</span>
               }
               <span class="dim">·</span>
-              {{ fmtN(maxTok(w)) }} tok
+              {{ fmtN(w.tokens) }} tok
             </div>
             <div class="wstats mono dim">
               @if (w.ttft_ms != null && w.ttft_ms > 0) {

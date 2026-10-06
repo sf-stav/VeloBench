@@ -4,17 +4,27 @@
     <div class="rc-group">
       <button class="btn" (click)="back()">← Comparisons</button>
       <span class="chip">{{ kind() }}</span>
+      <div class="tabs">
+        <button class="tab" [class.active]="view() === 'report'" (click)="view.set('report')">Report</button>
+        <button class="tab" [class.active]="view() === 'text'" (click)="view.set('text')">Text</button>
+      </div>
     </div>
     <div class="rc-group rc-right">
+      @if (view() === 'text') {
+        <button class="btn" (click)="copyTextReport()" title="Copy the whole text report to the clipboard">Copy</button>
+      }
       <button class="btn" (click)="exportPNG()" title="Export the whole comparison report as a PNG">PNG</button>
       <button class="btn" (click)="exportPDF()" title="Export the whole comparison report as a PDF">PDF</button>
     </div>
   </div>
+  @if (textNote()) {
+    <div class="export-note mono small">{{ textNote() }}</div>
+  }
   <div class="cmp">
   @if (error()) {
     <div class="card err">{{ error() }}</div>
   }
-  @if (a() && b()) {
+  @if (view() === 'report' && ready()) {
     <!-- Report header: brand + comparative analysis + the two sources -->
     <header class="cmp-header">
       <div class="cmp-topline">
@@ -119,8 +129,8 @@
             @for (s of sectionRows(); track s.name) {
               <tr>
                 <td class="l mono">{{ s.name }}</td>
-                <td class="r mono">{{ fmtRate(s.a) }}</td>
-                <td class="r mono strong">{{ fmtRate(s.b) }}</td>
+                <td class="r mono">{{ s.aS }}</td>
+                <td class="r mono strong">{{ s.bS }}</td>
                 <td class="r mono" [class.good]="s.pct.startsWith('+')" [class.bad]="!s.pct.startsWith('+')">{{ s.pct }}</td>
                 <td class="r mono">{{ s.turns }}</td>
               </tr>
@@ -129,6 +139,12 @@
         </table>
       </div>
     }
+  }
+  @if (view() === 'text' && ready()) {
+    <!-- Plain-text variant: ASCII-box tables only, fixed-width, copy-friendly. -->
+    <div class="card text-report-card">
+      <pre class="text-report" (click)="selectTextReport($event)" title="Click to select the whole report, then Ctrl+C - or use the Copy button above.">{{ textReport() }}</pre>
+    </div>
   }
 </div>
 </section>

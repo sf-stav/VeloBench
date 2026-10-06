@@ -2,7 +2,7 @@ import { Component, computed, OnDestroy, OnInit, signal, WritableSignal } from '
 import { Router } from '@angular/router';
 import { ApiService } from '../../services/api.service';
 import { SettingsService } from '../../services/settings.service';
-import { Benchmark, SessionAnalysis, SessionGroup, SessionMeta } from '../../types';
+import { SessionAnalysis, SessionGroup, SessionMeta } from '../../types';
 import { categoryColor } from '../../services/charts.service';
 import { regimeLabel as regimeLabelOf, regimeOrder } from '../../services/regimes';
 import { SessionsUiState } from '../../services/sessions-ui.service';
@@ -174,30 +174,11 @@ export class BenchmarksComponent implements OnInit, OnDestroy {
 
   regimeOptions = computed(() => {
     const set = new Set<string>();
-    for (const g of this.sessions()) for (const s of this.stripFor(g)) set.add(s.regime);
+    for (const g of this.sessions()) for (const s of g.strip) set.add(s.regime);
     return [...set].sort(regimeOrder);
   });
 
   modelOptions = computed(() => [...new Set(this.sessions().map((g) => g.model))].sort());
-
-  /** Overall decode rate for a session: total output tokens ÷ total decode
-   *  time across turns with final stats (the honest weighted number, not a
-   *  per-turn average). Turns with fewer than 2 tokens are excluded: a
-   *  single token has no inter-token interval, so its "rate" is meaningless
-   *  and once inflated whole sessions (500 tok/s from 1-token answers). */
-  overallTokS(g: SessionGroup): number | null {
-    let toks = 0;
-    let secs = 0;
-    for (const t of g.turns) {
-      const c = t.stats?.completion_tokens ?? 0;
-      const d = t.stats?.decode_ms ?? 0;
-      if (c >= 2 && d > 0) {
-        toks += c;
-        secs += d / 1000;
-      }
-    }
-    return secs > 0 ? toks / secs : null;
-  }
 
   /** Facets combine with AND; members of one facet combine with OR. */
   filteredSessions = computed(() => {
@@ -217,7 +198,7 @@ export class BenchmarksComponent implements OnInit, OnDestroy {
       }
       const fr = this.filterRegimes();
       if (fr.size) {
-        const present = new Set(this.stripFor(g).map((s) => s.regime));
+        const present = new Set(g.strip.map((s) => s.regime));
         if (![...fr].some((r) => present.has(r))) return false;
       }
       const fm = this.filterModels();
@@ -328,11 +309,11 @@ export class BenchmarksComponent implements OnInit, OnDestroy {
 
   async load(): Promise<void> {
     try {
-      const [records, analyses] = await Promise.all([
-        this.api.getBenchmarks(),
+      const [groups, analyses] = await Promise.all([
+        this.api.getSessions(),
         this.api.getAnalyses(),
       ]);
-      this.sessions.set(this.groupBySession(records));
+      this.sessions.set(groups);
       const map = new Map<string, SessionAnalysis>();
       for (const a of analyses) map.set(a.session, a);
       this.analyses.set(map);
@@ -355,38 +336,6 @@ export class BenchmarksComponent implements OnInit, OnDestroy {
     const m = id.match(/^([a-z]+-)(.{6})/);
     if (m) return m[1] + m[2] + id.slice(m[1].length + 6, m[1].length + 8);
     return id.slice(0, 10);
-  }
-
-  /** Collapse per-turn records into one row per session id, newest first. */
-  private groupBySession(records: Benchmark[]): SessionGroup[] {
-    const byId = new Map<string, SessionGroup>();
-    for (const b of records) {
-      let g = byId.get(b.session);
-      if (!g) {
-        g = {
-          session: b.session,
-          createdAt: b.created_at,
-          turns: [],
-          model: b.model,
-          provider: b.provider,
-          totalTokens: 0,
-          kind: b.kind || 'chat',
-          label: b.label || 'manual-chat',
-        };
-        byId.set(b.session, g);
-      }
-      g.turns.push(b);
-      // For concurrent runs every turn is "{run label} · {step}"; the
-      // SHORTEST label carries the run identity without the step suffix
-      // (named runs surface under the user's label, review F6).
-      if ((b.label || '').length < (g.label || '').length || !g.label) g.label = b.label || g.label;
-      if (b.created_at < g.createdAt) g.createdAt = b.created_at;
-      g.totalTokens += b.stats.completion_tokens || b.stats.token_events.length || 0;
-    }
-    const groups = [...byId.values()];
-    for (const g of groups) g.turns.sort((a, b) => a.created_at.localeCompare(b.created_at));
-    groups.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    return groups;
   }
 
   /** Poll only while at least one analysis is in flight. */
@@ -419,8 +368,7 @@ export class BenchmarksComponent implements OnInit, OnDestroy {
   isStale(g: SessionGroup): boolean {
     const a = this.analysisOf(g.session);
     if (!a || a.status !== 'done') return false;
-    const newest = g.turns.reduce((m, t) => (t.created_at > m ? t.created_at : m), '');
-    return newest > a.created_at;
+    return g.newestAt > a.created_at;
   }
 
   /** Open the analytics report for this session. */
@@ -428,30 +376,11 @@ export class BenchmarksComponent implements OnInit, OnDestroy {
     void this.router.navigate(['/analytics', session]);
   }
 
-  /** Deterministic regime composition of the whole session (free-tier split,
-   *  stamped automatically at turn completion), canonical order. */
-  stripFor(g: SessionGroup): { regime: string; pct: number }[] {
-    const totals = new Map<string, number>();
-    let total = 0;
-    for (const t of g.turns) {
-      for (const ev of t.stats.token_events ?? []) {
-        if (!ev.regime) continue;
-        const tok = ev.est_tokens || 0;
-        totals.set(ev.regime, (totals.get(ev.regime) ?? 0) + tok);
-        total += tok;
-      }
-    }
-    if (total <= 0) return [];
-    return [...totals.entries()]
-      .map(([regime, tok]) => ({ regime, pct: (tok / total) * 100 }))
-      .sort((a, b) => regimeOrder(a.regime, b.regime));
-  }
-
   /** Tooltip for the mini regime strip: "Code 61% · Prose 32% · …". */
   stripTitle(g: SessionGroup): string {
     return (
       'Deterministic split — ' +
-      this.stripFor(g)
+      g.strip
         .map((s) => `${this.regimeName(s.regime)} ${s.pct.toFixed(0)}%`)
         .join(' · ')
     );
@@ -461,24 +390,16 @@ export class BenchmarksComponent implements OnInit, OnDestroy {
     return regimeLabelOf(key);
   }
 
-  /** Dominant regime from the deterministic split (largest token share),
-   *  used when no AI analysis exists to provide a category. */
-  dominantFree(g: SessionGroup): string | null {
-    const strip = this.stripFor(g);
-    if (!strip.length) return null;
-    return strip.reduce((best, s) => (s.pct > best.pct ? s : best)).regime;
-  }
-
   /** Category tag for the row: AI analysis when present, else deterministic. */
   displayCategory(g: SessionGroup): string | null {
-    return this.analysisOf(g.session)?.category ?? this.dominantFree(g);
+    return this.analysisOf(g.session)?.category ?? g.dominant;
   }
 
   /** Where the row's category tag came from (tooltip honesty). */
   categorySource(g: SessionGroup): 'ai' | 'free' | 'none' {
     const a = this.analysisOf(g.session);
     if (a?.category) return 'ai';
-    return this.dominantFree(g) ? 'free' : 'none';
+    return g.dominant ? 'free' : 'none';
   }
 
   /** Progress 0..100 with a small floor so an indeterminate bar is visible. */
@@ -538,8 +459,4 @@ export class BenchmarksComponent implements OnInit, OnDestroy {
     }
   }
 
-  truncate(s: string): string {
-    const n = 240;
-    return s && s.length > n ? s.slice(0, n) + '…' : s;
-  }
 }

@@ -66,34 +66,15 @@ export class ComparisonsComponent implements OnInit {
 
   async refresh(): Promise<void> {
     try {
-      const [comps, benches, meta] = await Promise.all([
+      const [comps, sessions, meta] = await Promise.all([
         this.api.listComparisons(),
-        this.api.benchmarks(),
+        this.api.getSessions(),
         this.api.sessionMeta(),
       ]);
       this.comps.set(comps || []);
       this.meta = (meta || {}) as typeof this.meta;
-      const map = new Map<string, SessionGroup>();
-      this.bySession = map;
-      for (const b of benches as any[]) {
-        const g = map.get(b.session);
-        if (g) {
-          g.turns.push(b);
-          g.totalTokens += b.stats?.completion_tokens ?? 0;
-        } else {
-          map.set(b.session, {
-            session: b.session,
-            createdAt: b.created_at,
-            turns: [b],
-            model: b.model,
-            provider: b.provider,
-            totalTokens: b.stats?.completion_tokens ?? 0,
-            kind: b.kind === 'concurrent' ? 'concurrent' : b.kind === 'test' ? 'test' : 'chat',
-            label: b.label || '',
-          });
-        }
-      }
-      this.groups.set([...map.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      this.bySession = new Map(sessions.map((g) => [g.session, g]));
+      this.groups.set(sessions);
       this.clampPages();
       this.loaded.set(true);
     } catch (e: any) {
@@ -152,20 +133,6 @@ export class ComparisonsComponent implements OnInit {
 
   badgeOf(g: SessionGroup): string {
     return g.kind === 'concurrent' ? '⚡ ' + g.label : g.kind === 'test' ? g.label : 'Chat';
-  }
-
-  overallTokS(g: SessionGroup): number | null {
-    let toks = 0;
-    let secs = 0;
-    for (const t of g.turns) {
-      const c = (t.stats as any)?.completion_tokens ?? 0;
-      const d = (t.stats as any)?.decode_ms ?? 0;
-      if (c > 0 && d > 0) {
-        toks += c;
-        secs += d / 1000;
-      }
-    }
-    return secs > 0 ? toks / secs : null;
   }
 
   fmtDate(iso: string): string {

@@ -332,3 +332,25 @@ canvas.dist {
 .compat-line { display: flex; gap: 8px; font-size: 12.5px; margin: 3px 0; color: var(--text, #e5e7eb); }
 .compat-line.warn { color: #fbbf24; }
 .compat-ico { flex: 0 0 auto; }
+
+/* Report/Text view tabs (mirror the analytics page tabs). */
+.tabs { display: flex; gap: 6px; }
+.tab {
+  padding: 6px 16px; border-radius: 8px; border: 1px solid var(--border-c, #2a3040);
+  background: transparent; color: var(--muted, #94a3b8); cursor: pointer; font-size: 13px;
+}
+.tab.active { background: var(--brand, #4f8cff); border-color: var(--brand, #4f8cff); color: #fff; }
+.export-note { margin: 0 0 10px; color: var(--muted, #94a3b8); font-size: 12px; }
+
+/* ---------- Text report variant (ASCII boxes, fixed-width, copyable) ---------- */
+.text-report-card { padding: 0; overflow: hidden; }
+.text-report {
+  margin: 0;
+  padding: 16px 18px;
+  font-family: ui-monospace, 'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+  cursor: text;
+}

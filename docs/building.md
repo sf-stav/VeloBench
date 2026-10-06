@@ -137,7 +137,7 @@ Notes:
 
 ```ini
 [Unit]
-Description=VeloBenchmarkmark
+Description=VeloBenchmark
 After=network.target
 
 [Service]

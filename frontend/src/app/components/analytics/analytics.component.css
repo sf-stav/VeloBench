@@ -666,3 +666,19 @@ table.bins td.num, table.bins th.num { text-align: right; font-family: ui-monosp
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- Text report variant (ASCII boxes, fixed-width, copyable) ---------- */
+.text-report-card {
+  padding: 0;
+  overflow: hidden;
+}
+.text-report {
+  margin: 0;
+  padding: 16px 18px;
+  font-family: ui-monospace, 'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+  cursor: text;
+}

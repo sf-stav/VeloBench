@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import type { HistogramData } from './charts.service';
 import type { GenStats, LatencyClusterResult, LiveSample } from '../types';
 
 export interface LiveStats {
@@ -37,14 +38,21 @@ export class StatsEngine {
   readonly live = signal<LiveStats>(this.emptyLive());
   readonly final = signal<GenStats | null>(null);
   readonly aggSamples = signal<LiveSample[]>([]);
-  readonly aggLatencies = signal<number[]>([]);
+  /** Server-binned distributions (decode rate; inter-token latency). */
+  readonly rateHist = signal<HistogramData | null>(null);
+  readonly latencyHist = signal<HistogramData | null>(null);
+  readonly latencyCount = signal(0);
   readonly aggClusters = signal<LatencyClusterResult | null>(null);
   readonly aggAcceptance = signal<{ t: number; rate: number }[]>([]);
   readonly aggSpecDepth = signal<{ depth: number; count: number }[]>([]);
   readonly regimes = signal<RegimeStat[]>([]);
   readonly category = signal<string | null>(null);
-  /** Robust upper bound (ms) for the latency histogram, set server-side. */
-  readonly aggHistMax = signal<number | null>(null);
+  /** Server-derived display values (no statistics are computed in the browser). */
+  readonly aggAcceptanceMa = signal<{ t: number; rate: number }[]>([]);
+  readonly itlP90 = signal<number | null>(null);
+  readonly stability = signal<string>('—');
+  readonly rateCount = signal(0);
+  readonly latencyLabel = signal('');
   /** True when a session is ongoing on the backend (restored or live). */
   readonly sessionActive = signal(false);
 
@@ -69,7 +77,9 @@ export class StatsEngine {
   /** Overwrite the aggregate from a server-computed Stats frame. */
   applyStats(s: any): void {
     this.aggSamples.set((s.decode || []).map((p: any) => ({ t_ms: p.tMs, tok_s: p.tokS, kind: p.kind, regime: p.regime || undefined })));
-    this.aggLatencies.set((s.latencies || []).slice());
+    this.rateHist.set(s.rateHist ? { min: s.rateHist.min, max: s.rateHist.max, counts: s.rateHist.counts.slice() } : null);
+    this.latencyHist.set(s.latencyHist ? { min: s.latencyHist.min, max: s.latencyHist.max, counts: s.latencyHist.counts.slice() } : null);
+    this.latencyCount.set(s.latencyCount || 0);
     this.aggClusters.set(s.clusters ? {
       bimodal: s.clusters.bimodal,
       split: s.clusters.split,
@@ -79,15 +89,17 @@ export class StatsEngine {
     } : null);
     this.aggAcceptance.set((s.acceptance || []).map((p: any) => ({ t: p.t, rate: p.rate })));
     this.aggSpecDepth.set((s.specDepth || []).map((d: any) => ({ depth: d.depth, count: d.count })));
-    this.aggHistMax.set(s.histMax > 0 ? s.histMax : null);
+    this.aggAcceptanceMa.set((s.acceptanceMa || []).map((p: any) => ({ t: p.t, rate: p.rate })));
+    this.itlP90.set(s.itlP90 > 0 ? s.itlP90 : null);
+    this.stability.set(s.stability || '—');
+    this.rateCount.set(s.rateCount || 0);
+    this.latencyLabel.set(s.latencyLabel || '');
     this.regimes.set((s.regimes || []).map((r: any) => {
       const samples = (r.samples || []).map((p: any) => ({ t_ms: p.tMs, tok_s: p.tokS, kind: p.kind, regime: p.regime || undefined }));
-      const first = samples[0]?.t_ms ?? 0;
-      const last = samples[samples.length - 1]?.t_ms ?? first;
       return {
         category: r.category,
         token_count: r.tokenCount,
-        decode_ms: samples.length >= 2 ? Math.max(1, last - first) : 0,
+        decode_ms: r.decodeMs,
         avg_tok_s: r.avgTokS,
         min_tok_s: r.minTokS,
         median_tok_s: r.medianTokS,
@@ -142,11 +154,17 @@ export class StatsEngine {
   /** Reset everything for a new session (New Chat). */
   resetSession(): void {
     this.aggSamples.set([]);
-    this.aggLatencies.set([]);
+    this.rateHist.set(null);
+    this.latencyHist.set(null);
+    this.latencyCount.set(0);
     this.aggClusters.set(null);
     this.aggAcceptance.set([]);
     this.aggSpecDepth.set([]);
-    this.aggHistMax.set(null);
+    this.aggAcceptanceMa.set([]);
+    this.itlP90.set(null);
+    this.stability.set('—');
+    this.rateCount.set(0);
+    this.latencyLabel.set('');
     this.regimes.set([]);
     this.category.set(null);
     this._content = '';
@@ -163,7 +181,9 @@ export class StatsEngine {
    */
   restoreSession(s: any): void {
     this.aggSamples.set((s.samples || []).map((p: any) => ({ t_ms: p.t_ms, tok_s: p.tok_s, kind: p.kind, regime: p.regime || undefined })));
-    this.aggLatencies.set((s.latencies || []).slice());
+    this.rateHist.set(s.rate_hist ?? null);
+    this.latencyHist.set(s.latency_hist ?? null);
+    this.latencyCount.set(s.latency_count ?? 0);
     this.aggClusters.set(s.clusters ? {
       bimodal: s.clusters.bimodal,
       split: s.clusters.split,
@@ -173,10 +193,15 @@ export class StatsEngine {
     } : null);
     this.aggAcceptance.set((s.acceptance || []).map((p: any) => ({ t: p.t, rate: p.rate })));
     this.aggSpecDepth.set((s.spec_depth || []).map((d: any) => ({ depth: d.depth, count: d.count })));
+    this.aggAcceptanceMa.set((s.acceptance_ma || []).map((p: any) => ({ t: p.t, rate: p.rate })));
+    this.itlP90.set(s.itl_p90 > 0 ? s.itl_p90 : null);
+    this.stability.set(s.stability || '—');
+    this.rateCount.set(s.rate_count || 0);
+    this.latencyLabel.set(s.latency_label || '');
     this.regimes.set((s.regimes || []).map((r: any) => {
       const samples = (r.samples || []).map((p: any) => ({ t_ms: p.t_ms, tok_s: p.tok_s, kind: p.kind, regime: p.regime || undefined }));
       return {
-        category: r.category, token_count: r.token_count, decode_ms: 0,
+        category: r.category, token_count: r.token_count, decode_ms: r.decode_ms,
         avg_tok_s: r.avg_tok_s, min_tok_s: r.min_tok_s, median_tok_s: r.median_tok_s, max_tok_s: r.max_tok_s, samples,
       };
     }));

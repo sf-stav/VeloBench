@@ -3,6 +3,50 @@
 High-level release notes for VeloBenchmark. Minor bug fixes and small optimizations are grouped under
 generic language where they aren't individually notable.
 
+## v0.3.0 — Server-computed everything, text reports, honest timing
+
+- **Every figure is computed by the server.** The Analytics report, the Compare page, the
+  Sessions and Comparisons lists, the Runner cards and the live stats/telemetry panels now
+  fetch a view model from the backend and only draw it — nothing is re-derived in the
+  browser. The TypeScript ports of the clustering, percentile, comparison and report-layout
+  code are deleted, so a number can no longer differ between the screen and the stored
+  report.
+- **Sessions and Comparisons open fast.** Both lists downloaded every recorded token event
+  and rebuilt their rows in the browser (138 MB on a busy install); they now receive one
+  summarised row per session (~0.5 MB, ~0.2 s).
+- **Histograms ship pre-binned.** Decode-rate and inter-token-latency distributions are
+  binned once on the server (`{min, max, counts}`) instead of pushing thousands of raw
+  values through every live frame.
+- **Fixed: Compare's TTFT "median" and "p90" were the maximum.** A percentile helper that
+  expects a 0..1 fraction was called with 50 and 90, so it clamped to 1 — a multi-turn
+  comparison reported its slowest first-token latency as the median and the p90, and
+  per-section "median decode tok/s" was the fastest turn. Both now use the same order
+  statistics as the analytics report.
+- **One decode-rate rule.** Sessions needed ≥ 2 tokens for a rate, Comparisons ≥ 1; the
+  server's single definition (≥ 2 — one token has no inter-token interval) applies
+  everywhere now.
+- **Timings are engine↔backend only.** A dedicated reader task stamps each token the instant
+  its bytes arrive and closes a turn at the engine's end-of-stream; the stats loop drains in
+  batches and coalesces UI frames. A slow browser or WebSocket delays what you see, never
+  what is measured — verified with an 8000-token generation against a client that read
+  nothing for 200 s (106.5 vs 108.3 tok/s).
+- **Text reports.** Session reports (single-stream and concurrent) and comparisons gain a
+  **Text** tab: the same figures as box-drawing tables (╭─╮ ╰─╯) in a fixed-width font, no
+  charts, with a **Copy** button (plus a plain-HTTP fallback) — pasteable into chat, mail or
+  an issue tracker.
+- **Fixed: stalled concurrent runs never finished.** A worker's connect/response-headers
+  phase had no timeout, so a provider that answered one worker with a 503 and never answered
+  the rest left the run "running" until the app was restarted. Headers are now bounded at
+  120 s and handled like any stream failure; the body still streams without a limit, so slow
+  thinking models are never cut off.
+- **The reported version is the real one.** `Cargo.toml` was pinned at 0.1.0 while releases
+  had reached v0.2.1, so `/api/health` and the `app_version` in every report footer named a
+  version that never shipped. Both now report 0.3.0.
+- **Docs.** The product name is normalised to VeloBenchmark (the manual's title still carried
+  the old "VeloBenchmarkmark" spelling), and the timing contract above is documented in the
+  manual and the known-limitations list.
+- Rebuilt embedded frontend. Changelog updated.
+
 ## v0.2.1 — Report & chart polish, instant Stop
 
 - **Instant Stop.** Cancelled turns now finalize via fast estimates, so **Stop acknowledges

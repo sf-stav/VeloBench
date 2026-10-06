@@ -1,6 +1,6 @@
-# VeloBenchmarkmark — User Manual
+# VeloBenchmark — User Manual
 
-VeloBenchmarkmark is a single-binary LLM **live-stats benchmarking and chat console**.
+VeloBenchmark is a single-binary LLM **live-stats benchmarking and chat console**.
 This manual walks through every screen, how to create and run tests, and how to
 read the reports.
 
@@ -53,7 +53,7 @@ below the conversation.
    - **Reasoning** — a per-model reasoning toggle and effort level (off /
      low / medium / high / …). When reasoning is off, no effort is sent.
    - **Tokenizer** — optional path/URL to a `tokenizer.json` for exact token
-     counting. Without it, VeloBenchmarkmark probes the server's tokenizer;
+     counting. Without it, VeloBenchmark probes the server's tokenizer;
      as a last resort it falls back to an estimated count (you can set a
      per-model **live calibration ratio** to bring live tok/s in line with the
      provider's authoritative usage numbers).
@@ -84,7 +84,7 @@ instruments attached.
   streams and returns to OFF afterwards.
 - **Reasoning models** — reasoning deltas are captured separately and shown
   (and measured) distinctly from answer content.
-- **New Chat** starts a fresh VeloBenchmarkmark session; each session keeps its
+- **New Chat** starts a fresh VeloBenchmark session; each session keeps its
   own identity and report.
 
 ### The live stats panel
@@ -180,7 +180,7 @@ workers, steps and requests as separate identities.
 
 ## Sessions
 
-The Sessions page (🗂) lists every recorded VeloBenchmarkmark session — chat
+The Sessions page (🗂) lists every recorded VeloBenchmark session — chat
 conversations, test runs, concurrent runs — with their turn counts and model
 labels. A **search box** finds sessions by id, custom name, model, provider or
 test; filter chips group the list (provider names are matched
@@ -192,7 +192,11 @@ deleted here.
 
 ## Session analytics — what each report shows
 
-The analytics view is the full report for one session.
+The analytics view is the full report for one session. Every figure on it —
+rates, percentiles, clusters, acceptance, findings and the text report — is
+computed by the server (`GET /api/analyses/{session}/view`, per scope and
+section) and the browser only draws it. The text report's *Created* line is
+shown in UTC because the server, not your browser, formats it.
 
 ![Analytics](images/analytics.png)
 
@@ -224,6 +228,15 @@ The analytics view is the full report for one session.
   request's user prompt and effective settings (reasoning, budget, token
   source).
 
+The **Text** tab shows the same report as plain text — box-drawing tables
+in the ╭─╮ ╰─╯ style (session identity, key metrics, a concurrency summary
+on concurrent runs, one row per request/step, per-step aggregates, token
+mix, provenance notes) rendered in a fixed-width font, no charts. **Copy**
+puts the whole report on the clipboard (a fallback covers plain-HTTP LAN
+deployments where the async clipboard API is unavailable), or click the
+report body to select it all. Every figure is identical to the graphical
+report.
+
 ## Comparing sessions
 
 The Compare page (⇄) puts sessions side by side.
@@ -240,10 +253,15 @@ The Compare page (⇄) puts sessions side by side.
 3. The comparison view lays the sessions' headline numbers and timelines next
    to each other — same prompts across models, before/after server tuning,
    single vs concurrent, vision vs text: whatever you line up.
+4. The **Text** tab renders the comparison as plain text: the two sides,
+   compatibility notes, the head-to-head metric table with a per-metric
+   verdict, per-common-section medians and the win/loss tally — box-drawing
+   tables (╰──╯ style) in a fixed-width font, no charts, with a **Copy**
+   button for the whole report.
 
 ## Telemetry
 
-VeloBenchmarkmark ships a built-in **OTLP/HTTP-JSON telemetry receiver** that turns
+VeloBenchmark ships a built-in **OTLP/HTTP-JSON telemetry receiver** that turns
 a serving engine's OpenTelemetry stream into a live dashboard.
 
 ![Telemetry](images/telemetry.png)

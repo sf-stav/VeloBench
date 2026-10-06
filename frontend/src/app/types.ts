@@ -329,17 +329,42 @@ export interface SessionMeta {
 }
 
 /** A session row on the Sessions page: the turns sharing one session id. */
+/** One recorded turn inside a session row (lightweight; server-truncated text). */
+export interface SessionTurn {
+  id: string;
+  created_at: string;
+  provider: string;
+  model: string;
+  ttft_ms: number | null;
+  /** completion tokens (falls back to the recorded event count). */
+  tokens: number;
+  prompt: string;
+  output: string;
+  reasoning: string;
+}
+
+/** A session row (Sessions / Comparisons pages), summarised by the server
+ *  (GET /api/sessions): grouping, token totals, decode rate and regime
+ *  composition are all computed server-side. */
 export interface SessionGroup {
   session: string;
   createdAt: string;
-  turns: Benchmark[];
+  /** Newest turn's creation time (staleness check against an analysis). */
+  newestAt: string;
+  turns: SessionTurn[];
   model: string;
   provider: string;
   totalTokens: number;
-  /** Origin of the session: 'chat' (manual) or 'test' (Test Constructor run). */
+  /** Origin of the session: 'chat' (manual), 'test' or 'concurrent'. */
   kind: string;
-  /** Manual chats: 'manual-chat'. Test runs: the test title. */
+  /** Run/test label (shortest label of the session's turns). */
   label: string;
+  /** Overall decode rate (tok/s), null when it cannot be measured. */
+  overallTokS: number | null;
+  /** Deterministic regime composition, canonical order. */
+  strip: { regime: string; pct: number }[];
+  /** Largest-share regime of the strip, null when there is none. */
+  dominant: string | null;
 }
 
 // ---------- Test Constructor ----------

@@ -15,9 +15,6 @@
       <div class="sub muted mono test-date">{{ nowStr() }}</div>
     </div>
     <div class="head-actions">
-      @if (scope === 'stats') {
-        <button class="btn" (click)="refresh()" title="Reload session history">↻</button>
-      }
       <button class="btn" (click)="exportPNG()">PNG</button>
       <button class="btn" (click)="exportPDF()">PDF</button>
     </div>
@@ -69,7 +66,7 @@
       <canvas id="histChart" style="width:100%;height:100px;display:block"></canvas>
     </div>
     <div class="chart-card">
-      <div class="chart-head"><h4>Inter-token latency distribution</h4><span class="chart-unit">ms · n={{ engine.aggLatencies().length }}</span></div>
+      <div class="chart-head"><h4>Inter-token latency distribution</h4><span class="chart-unit">ms · n={{ engine.latencyCount() }}</span></div>
       <canvas id="latencyChart" style="width:100%;height:100px;display:block"></canvas>
       <div class="legend muted">{{ latencyLabel() }}</div>
     </div>

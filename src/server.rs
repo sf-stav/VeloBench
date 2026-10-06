@@ -83,8 +83,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/tests/{id}", delete(delete_test_handler))
         .route("/api/tests/{id}/favorite", put(set_test_favorite_handler))
         .route("/api/sessions/{session}/analyze", post(start_analysis))
+        .route("/api/sessions", get(list_sessions))
         .route("/api/analyses", get(list_analyses))
         .route("/api/analyses/{session}", get(get_analysis))
+        .route("/api/analyses/{session}/view", get(get_analysis_view))
         .route("/ws", axum::routing::get(ws::ws_handler))
         .route("/api/session", get(get_session).post(new_session))
         .route("/api/wipe", post(wipe_history))
@@ -105,6 +107,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/test-images", get(test_images))
         .route("/api/comparisons", get(list_comparisons).post(add_comparison))
         .route("/api/comparisons/{id}", delete(delete_comparison))
+        .route("/api/comparisons/{id}/view", get(get_comparison_view))
         .fallback(static_service)
         .with_state(state)
 }
@@ -559,6 +562,13 @@ async fn classify_handler(
 
 // ---------- benchmarks ----------
 
+/// One lightweight summary row per session (grouping, tokens, decode rate,
+/// regime strip, newest turn) — everything the list views used to compute
+/// from the full benchmark payload in the browser.
+async fn list_sessions(State(st): State<AppState>) -> Json<serde_json::Value> {
+    Json(crate::sessions_view::build(&st.store.benchmarks().await))
+}
+
 async fn list_benchmarks(State(st): State<AppState>) -> Json<Vec<crate::benchmarks::Benchmark>> {
     Json(st.store.benchmarks().await)
 }
@@ -675,6 +685,30 @@ async fn get_analysis(
         Some(v) => (StatusCode::OK, Json(v)).into_response(),
         None => (StatusCode::NOT_FOUND, Json(json_err("analysis not found", 404))).into_response(),
     }
+}
+
+#[derive(serde::Deserialize)]
+struct ViewQuery {
+    scope: Option<String>,
+    section: Option<String>,
+}
+
+/// The Analytics page's whole report view model for one (scope, section)
+/// selection — every statistic is computed here, the browser only renders.
+async fn get_analysis_view(
+    State(st): State<AppState>,
+    AxumPath(session): AxumPath<String>,
+    axum::extract::Query(q): axum::extract::Query<ViewQuery>,
+) -> Response {
+    let Some(detail) = crate::analyze::session_detail(&st, &session).await else {
+        return (StatusCode::NOT_FOUND, Json(json_err("analysis not found", 404))).into_response();
+    };
+    let scope = crate::report_view::Scope::parse(q.scope.as_deref().unwrap_or("all"));
+    let section = q.section.as_deref().filter(|s| !s.is_empty());
+    let name = st.store.session_meta().await.get(&session).and_then(|m| m.name.clone());
+    let meta = crate::report_view::ViewMeta { title_name: name, app_version: env!("CARGO_PKG_VERSION").to_string() };
+    let view = crate::report_view::build_view(&detail, &crate::report_view::ViewParams { scope, section }, &meta);
+    (StatusCode::OK, Json(view)).into_response()
 }
 
 // ---------- data wipe / tokenizer management ----------
@@ -1060,17 +1094,17 @@ pub fn test_image_bytes(name: &str) -> Option<(&'static [u8], &'static str)> {
     Some((f.contents(), mime))
 }
 
-async fn list_concurrent(State(st): State<AppState>) -> Json<Vec<crate::concurrent::ConcRun>> {
-    Json(st.conc.list())
+async fn list_concurrent(State(st): State<AppState>) -> Json<Vec<serde_json::Value>> {
+    Json(st.conc.list().iter().map(|r| r.to_view()).collect())
 }
 
 async fn get_concurrent(
     State(st): State<AppState>,
     AxumPath(id): AxumPath<String>,
-) -> Result<Json<crate::concurrent::ConcRun>, (StatusCode, String)> {
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     st.conc
         .get(&id)
-        .map(Json)
+        .map(|r| Json(r.to_view()))
         .ok_or_else(|| (StatusCode::NOT_FOUND, "unknown concurrent run".into()))
 }
 
@@ -1172,6 +1206,24 @@ async fn cancel_request(
 }
 
 // ---- Saved session comparisons --------------------------------------------
+
+/// The Compare page's whole view model for one saved comparison (side stats,
+/// deltas, verdicts, chart parameters, text report) — computed server-side.
+async fn get_comparison_view(State(st): State<AppState>, AxumPath(id): AxumPath<String>) -> Response {
+    let Some(c) = st.store.comparisons().await.into_iter().find(|c| c.id == id) else {
+        return (StatusCode::NOT_FOUND, Json(json_err("comparison not found", 404))).into_response();
+    };
+    let (Some(a), Some(b)) = (
+        crate::analyze::session_detail(&st, &c.a).await,
+        crate::analyze::session_detail(&st, &c.b).await,
+    ) else {
+        return (StatusCode::NOT_FOUND, Json(json_err("a compared session no longer exists", 404))).into_response();
+    };
+    let meta = st.store.session_meta().await;
+    let view = crate::compare_view::build(&c.kind, &c.a, &c.b, &a, &b, &meta);
+    (StatusCode::OK, Json(view)).into_response()
+}
+
 
 async fn list_comparisons(State(st): State<AppState>) -> Json<Vec<crate::state::SessionComparison>> {
     Json(st.store.comparisons().await)

@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use futures::StreamExt;
 use serde::Serialize;
 
 use crate::proto::velobench::{ChatMessage, ChatRequest, ParamOverride};
@@ -93,6 +92,51 @@ pub struct ConcRun {
     #[serde(default)]
     pub error: String,
     pub snaps: Vec<WorkerSnap>,
+}
+
+impl ConcRun {
+    /// The run snapshot as served to the UI: the raw fields plus every
+    /// aggregate the runner cards show, computed here so the browser only
+    /// displays them. Per worker: `tokens` (exact once settled, else the live
+    /// estimate) and `rate` (the sustained decode rate, absent when fewer than
+    /// 2 tokens exist — one token has no inter-token interval). Per run:
+    /// `running`, `done`, `sum_tok_s` (null when no worker has a rate) and
+    /// `sum_tokens`.
+    pub fn to_view(&self) -> serde_json::Value {
+        let mut v = serde_json::to_value(self).unwrap_or(serde_json::Value::Null);
+        let js_round = |x: f64| (x + 0.5).floor();
+        let mut sum_rate = 0.0;
+        let mut n_rate = 0usize;
+        let mut sum_tokens = 0.0;
+        if let Some(snaps) = v.get_mut("snaps").and_then(|s| s.as_array_mut()) {
+            for (w, o) in self.snaps.iter().zip(snaps.iter_mut()) {
+                let tokens = (w.completion_tokens as f64).max(js_round(w.est_tokens));
+                let rate = if tokens < 2.0 {
+                    None
+                } else {
+                    let settled = w.state == "done" || w.state == "stopped";
+                    let r = if settled { w.final_tok_s.unwrap_or(0.0) } else { w.tok_s };
+                    if r > 0.0 { Some(r) } else { None }
+                };
+                if let Some(r) = rate {
+                    sum_rate += r;
+                    n_rate += 1;
+                }
+                sum_tokens += tokens;
+                if let Some(obj) = o.as_object_mut() {
+                    obj.insert("tokens".into(), serde_json::json!(tokens));
+                    obj.insert("rate".into(), serde_json::json!(rate));
+                }
+            }
+        }
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert("running".into(), serde_json::json!(self.snaps.iter().filter(|w| w.state == "streaming").count()));
+            obj.insert("done".into(), serde_json::json!(self.snaps.iter().filter(|w| w.state == "done").count()));
+            obj.insert("sum_tok_s".into(), serde_json::json!(if n_rate > 0 { Some(sum_rate) } else { None }));
+            obj.insert("sum_tokens".into(), serde_json::json!(sum_tokens));
+        }
+        v
+    }
 }
 
 /// One executable step of a run plan. `Marker` is a phase rename only
@@ -894,9 +938,21 @@ async fn run_step(
     set_worker(&st, &run_id, idx, |w| w.state = "streaming".into());
 
     // Stream + feed the engine; update the snapshot on every delta.
-    let res = match crate::proxy::stream_chat(&st.http, &provider, &payload).await {
-        Ok(res) => res,
-        Err(e) => {
+    // The initial request must not be able to hang the whole run: a busy
+    // server that accepts the connection but never answers with response
+    // headers would otherwise stall the barrier forever (observed with
+    // HTTP 503 bursts — one worker fails fast, the others never resolve,
+    // so join_all never returns and the run stays unfinished). The timeout
+    // covers connect + response headers only; the body streams afterwards
+    // without a limit (slow thinking models must not be cut off).
+    let res = match tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        crate::proxy::stream_chat(&st.http, &provider, &payload),
+    )
+    .await
+    {
+        Ok(Ok(res)) => res,
+        Ok(Err(e)) => {
             tracing::warn!("conc: worker {idx} stream failed: {e}");
             set_worker(&st, &run_id, idx, |w| {
                 w.state = "failed".into();
@@ -904,66 +960,66 @@ async fn run_step(
             });
             return Err(format!("stream failed: {e}"));
         }
+        Err(_) => {
+            tracing::warn!("conc: worker {idx} stream timed out after 120 s without response headers");
+            set_worker(&st, &run_id, idx, |w| {
+                w.state = "failed".into();
+                w.error = Some("stream timed out after 120 s (no response headers)".into());
+            });
+            return Err("stream timed out after 120 s".into());
+        }
     };
-    let mut buf = String::new();
-    let mut stream = res.bytes_stream();
-    // Stop must win even when the provider stream stalls: the stop flag is
-    // checked on a short timer, not only between chunks.
-    loop {
-        let next = tokio::select! {
-            _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {
-                if let Some(f) = &stop_flag {
-                    if f.load(Ordering::Relaxed) {
-                        break;
-                    }
+    // Arrival stamping happens on a dedicated reader task (engine <-> backend
+    // timing only); this loop applies stamped deltas to the worker's engine in
+    // batches, so processing speed can never skew the measured rates.
+    let mut rx = crate::ws::spawn_upstream_reader(res, stop_flag.clone());
+    let mut end_ts = now_ms();
+    'run: loop {
+        let Some(first) = rx.recv().await else { break };
+        let mut batch = vec![first];
+        while let Ok(more) = rx.try_recv() {
+            batch.push(more);
+        }
+        let mut touched = false;
+        let mut ended = false;
+        for item in batch {
+            match item {
+                crate::ws::Upstream::End(ts) => {
+                    end_ts = ts;
+                    ended = true;
                 }
-                continue;
-            }
-            c = stream.next() => c,
-        };
-        let Some(chunk) = next else { break };
-        let chunk = match chunk {
-            Ok(b) => b,
-            Err(_) => break,
-        };
-        buf.push_str(&String::from_utf8_lossy(&chunk));
-        while let Some(i) = buf.find("\n\n") {
-            let event = buf[..i].to_string();
-            buf.drain(..i + 2);
-            for line in event.split('\n') {
-                let line = line.trim();
-                if !line.starts_with("data:") {
-                    continue;
-                }
-                let data = line.trim_start_matches("data:").trim_start();
-                if data == "[DONE]" {
-                    continue;
-                }
-                if let Some(p) = crate::ws::parse_delta(data) {
+                crate::ws::Upstream::Delta(ts, p) => {
                     if let Some(r) = &p.finish_reason {
                         engine.set_finish_reason(r);
                     }
-                    let ts = now_ms();
                     if !p.content.is_empty() {
-                        engine.record_delta("content", &p.content, ts);
+                        engine.record_delta_raw("content", &p.content, ts);
+                        touched = true;
                     }
                     if !p.reasoning.is_empty() {
-                        engine.record_delta("reasoning", &p.reasoning, ts);
+                        engine.record_delta_raw("reasoning", &p.reasoning, ts);
+                        touched = true;
                     }
                     if let Some((c, pr, rt, acc, rej)) = p.usage {
                         engine.set_usage(Some(c), Some(pr), rt);
                         engine.set_usage_spec(acc, rej);
                     }
-                    let live = engine.live();
-                    let (tokens, tok_s, ttft) = (live.tokens, live.tok_s, live.ttft_ms);
-                    set_worker(&st, &run_id, idx, |w| {
-                        w.est_tokens = tokens;
-                        w.tok_s = tok_s;
-                        w.ttft_ms = ttft;
-                        w.completion_tokens = tokens as i64;
-                    });
                 }
             }
+        }
+        if touched {
+            engine.refresh();
+            let live = engine.live();
+            let (tokens, tok_s, ttft) = (live.tokens, live.tok_s, live.ttft_ms);
+            set_worker(&st, &run_id, idx, |w| {
+                w.est_tokens = tokens;
+                w.tok_s = tok_s;
+                w.ttft_ms = ttft;
+                w.completion_tokens = tokens as i64;
+            });
+        }
+        if ended {
+            break 'run;
         }
     }
 
@@ -977,9 +1033,9 @@ async fn run_step(
     // A Stop must acknowledge fast: cancelled partials skip the per-chunk
     // exact counting (a looping generation holds thousands of chunks).
     let gen = if stopped {
-        engine.finish(now_ms())
+        engine.finish(end_ts)
     } else {
-        engine.finish_exact(&st.http, handle.as_deref(), now_ms()).await
+        engine.finish_exact(&st.http, handle.as_deref(), end_ts).await
     };
     let final_tok_s = Some(gen.final_tok_s);
     let completion = gen.completion_tokens;
@@ -1155,5 +1211,48 @@ mod tests {
             }
             other => panic!("expected Markers, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod view_tests {
+    use super::*;
+
+    fn snap(idx: usize, state: &str, est: f64, tok_s: f64, completion: i64, final_rate: Option<f64>) -> WorkerSnap {
+        let mut w = WorkerSnap::queued(idx);
+        w.state = state.into();
+        w.est_tokens = est;
+        w.tok_s = tok_s;
+        w.completion_tokens = completion;
+        w.final_tok_s = final_rate;
+        w
+    }
+
+    fn run(snaps: Vec<WorkerSnap>) -> ConcRun {
+        ConcRun {
+            id: "r".into(), label: "l".into(), provider_id: "p".into(), provider_name: "P".into(), model: "m".into(),
+            model_uid: String::new(), fill_tokens: 0, tg: 0, workers: snaps.len(), repeats: 1, session: "s".into(),
+            started_at: String::new(), finished: false, test_id: String::new(), test_title: String::new(),
+            step: 1, steps: 1, step_title: String::new(), error: String::new(), snaps,
+        }
+    }
+
+    #[test]
+    fn run_view_computes_aggregates_server_side() {
+        let r = run(vec![
+            snap(0, "streaming", 40.4, 90.0, 0, None),            // live: tokens 40, live rate 90
+            snap(1, "done", 120.0, 0.0, 120, Some(110.0)),        // settled: exact tokens, final rate
+            snap(2, "done", 1.0, 0.0, 1, Some(999.0)),            // 1 token: no measurable rate
+            snap(3, "failed", 0.0, 0.0, 0, None),
+        ]);
+        let v = r.to_view();
+        assert_eq!(v["running"], serde_json::json!(1));
+        assert_eq!(v["done"], serde_json::json!(2));
+        assert_eq!(v["sum_tok_s"], serde_json::json!(200.0), "90 live + 110 settled; 1-token worker excluded");
+        assert_eq!(v["sum_tokens"], serde_json::json!(161.0));
+        assert_eq!(v["snaps"][0]["tokens"], serde_json::json!(40.0));
+        assert_eq!(v["snaps"][0]["rate"], serde_json::json!(90.0));
+        assert_eq!(v["snaps"][2]["rate"], serde_json::Value::Null);
+        assert_eq!(run(vec![snap(0, "done", 1.0, 0.0, 1, Some(5.0))]).to_view()["sum_tok_s"], serde_json::Value::Null);
     }
 }

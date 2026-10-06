@@ -603,8 +603,22 @@ pub async fn tick_frame(
             .rev()
             .copied()
             .collect();
-        let acceptance: Vec<Value> = a
-            .acceptance
+        let derived = crate::stats::panel_derived(live, a);
+        // Distributions are binned here (same windows the panel used to get:
+        // last 1000 samples / 1500 gaps), so the browser only draws bars.
+        let rate_vals: Vec<f64> = a
+            .samples
+            .iter()
+            .rev()
+            .take(1000)
+            .rev()
+            .map(|p| p.tok_s)
+            .filter(|v| *v > 0.0)
+            .collect();
+        let rate_hist = crate::histogram::hist_json(&rate_vals, &crate::histogram::Opts::width(1.0));
+        let lat_hist = crate::histogram::hist_json(&latencies, &crate::histogram::Opts::width(0.5));
+        let acceptance: Vec<Value> = derived
+            .acceptance_ma
             .iter()
             .rev()
             .take(800)
@@ -643,10 +657,13 @@ pub async fn tick_frame(
                 "contentTokens": live.content_tokens,
             },
             "samples": samples,
-            "latencies": latencies,
+            "rateHist": rate_hist,
+            "latHist": lat_hist,
             "acceptance": acceptance,
             "specDepth": spec_depth,
             "clusters": clusters,
+            "itlP90": derived.itl_p90.unwrap_or(0.0),
+            "stability": derived.stability,
             "recording": s.recording.as_ref().map(|r| {
                 json!({
                     "elapsedS": ((now - r.started_ms) / 1000.0).max(0.0),

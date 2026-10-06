@@ -138,6 +138,100 @@ pub struct RegimeStat {
     pub samples: Vec<LiveSample>,
 }
 
+/// Trailing window (samples) of the acceptance-curve moving average.
+const ACCEPTANCE_MA_PERIOD: usize = 27;
+
+/// Everything the live panels display that is *derived* from the engine's
+/// series. Computed here once so every UI path (WebSocket frames, session
+/// snapshot, telemetry) only renders — no statistics live in the browser.
+#[derive(Clone, Debug, Default)]
+pub struct PanelDerived {
+    /// Acceptance curve smoothed with a trailing mean; the warm-up outputs
+    /// (partial windows) are dropped so every point is a full-window mean.
+    pub acceptance_ma: Vec<AcceptancePoint>,
+    /// Inter-token latency p90 (ms) once >= 8 gaps exist.
+    pub itl_p90: Option<f64>,
+    /// Median ÷ peak of the windowed rate series, as display text.
+    pub stability: String,
+    /// Positive windowed-rate samples (distribution n=).
+    pub rate_count: u32,
+    /// Bimodality annotation for the latency histogram.
+    pub latency_label: String,
+    /// Decode-rate distribution (positive windowed rates, 1 tok/s bins).
+    pub rate_hist: Option<crate::histogram::Histogram>,
+    /// Inter-token latency distribution (0.5 ms bins, capped at a robust bound).
+    pub latency_hist: Option<crate::histogram::Histogram>,
+    /// Inter-token gaps in the latency distribution (n=).
+    pub latency_count: u32,
+}
+
+pub fn panel_derived(live: &LiveStats, a: &SessionAnalytics) -> PanelDerived {
+    let mut acceptance_ma = Vec::new();
+    if a.acceptance.len() >= ACCEPTANCE_MA_PERIOD {
+        let mut sum = 0.0;
+        for (i, p) in a.acceptance.iter().enumerate() {
+            sum += p.rate;
+            if i >= ACCEPTANCE_MA_PERIOD {
+                sum -= a.acceptance[i - ACCEPTANCE_MA_PERIOD].rate;
+            }
+            if i + 1 >= ACCEPTANCE_MA_PERIOD {
+                acceptance_ma.push(AcceptancePoint { t: p.t, rate: sum / ACCEPTANCE_MA_PERIOD as f64 });
+            }
+        }
+    }
+    let itl_p90 = if a.latencies.len() >= 8 {
+        let mut s = a.latencies.clone();
+        s.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+        Some(s[(s.len() - 1).min((s.len() as f64 * 0.9).floor() as usize)])
+    } else {
+        None
+    };
+    let stability = if live.max > 0.0 {
+        format!("{}%", (live.median / live.max * 100.0).round())
+    } else {
+        "—".to_string()
+    };
+    let latency_label = match &a.clusters {
+        None => String::new(),
+        Some(c) if !c.bimodal || c.clusters.len() < 2 => {
+            "unimodal distribution (speculation likely off)".to_string()
+        }
+        Some(c) => {
+            let (lo, hi) = (&c.clusters[0], &c.clusters[1]);
+            let pct = |n: usize| format!("{:.0}%", n as f64 / (c.total.max(1)) as f64 * 100.0);
+            format!(
+                "bimodal · low ≈ {:.0}ms ({}, n={}) · high ≈ {:.0}ms ({}, n={}) · split {:.0}ms",
+                lo.mean, pct(lo.count), lo.count, hi.mean, pct(hi.count), hi.count, c.split
+            )
+        }
+    };
+    let rate_vals: Vec<f64> = a.samples.iter().map(|s| s.tok_s).filter(|v| *v > 0.0).collect();
+    let hist_max = crate::ws::histogram_max_pub(&a.latencies, a.clusters.as_ref());
+    let rate_hist = crate::histogram::histogram(&rate_vals, &crate::histogram::Opts::width(1.0));
+    let latency_hist = crate::histogram::histogram(
+        &a.latencies,
+        &crate::histogram::Opts::width(0.5).capped(if hist_max > 0.0 { Some(hist_max) } else { None }),
+    );
+    PanelDerived {
+        rate_hist,
+        latency_hist,
+        latency_count: a.latencies.len() as u32,
+        acceptance_ma,
+        itl_p90,
+        stability,
+        rate_count: a.samples.iter().filter(|s| s.tok_s > 0.0).count() as u32,
+        latency_label,
+    }
+}
+
+/// Span (ms) of a regime's samples; 0 when fewer than two.
+pub fn regime_decode_ms(r: &RegimeStat) -> f64 {
+    match (r.samples.first(), r.samples.last()) {
+        (Some(a), Some(b)) if r.samples.len() >= 2 => (b.t_ms - a.t_ms).max(1.0),
+        _ => 0.0,
+    }
+}
+
 pub struct StatsEngine {
     // run-scoped
     events: Vec<TokenEvent>,
@@ -277,11 +371,19 @@ impl StatsEngine {
         let live = &self.live;
         let final_stats = self.final_stats.as_ref();
         let lc = a.clusters.as_ref();
+        let d = panel_derived(live, a);
         json!({
+            "acceptance_ma": d.acceptance_ma.iter().map(|p| json!({ "t": p.t, "rate": p.rate })).collect::<Vec<_>>(),
+            "itl_p90": d.itl_p90.unwrap_or(0.0),
+            "stability": d.stability,
+            "rate_count": d.rate_count,
+            "latency_label": d.latency_label,
+            "rate_hist": d.rate_hist.as_ref().map(|h| h.to_json()),
+            "latency_hist": d.latency_hist.as_ref().map(|h| h.to_json()),
+            "latency_count": d.latency_count,
             "active": !self.session_points.is_empty() || !a.samples.is_empty() || final_stats.is_some(),
             "session_id": self.session_id,
             "samples": a.samples.iter().map(|s| json!({ "t_ms": s.t_ms, "tok_s": s.tok_s, "kind": s.kind, "regime": s.regime })).collect::<Vec<_>>(),
-            "latencies": a.latencies,
             "clusters": lc.map(|c| json!({
                 "bimodal": c.bimodal, "split": c.split, "eta": c.eta, "total": c.total,
                 "clusters": c.clusters.iter().map(|cl| json!({ "mean": cl.mean, "count": cl.count, "std": cl.std, "min": cl.min, "max": cl.max })).collect::<Vec<_>>(),
@@ -289,7 +391,7 @@ impl StatsEngine {
             "acceptance": a.acceptance.iter().map(|p| json!({ "t": p.t, "rate": p.rate })).collect::<Vec<_>>(),
             "spec_depth": a.spec_depth.iter().map(|s| json!({ "depth": s.depth, "count": s.count })).collect::<Vec<_>>(),
             "regimes": self.regimes.iter().map(|r| json!({
-                "category": r.category, "token_count": r.token_count, "avg_tok_s": r.avg_tok_s,
+                "category": r.category, "token_count": r.token_count, "decode_ms": regime_decode_ms(r), "avg_tok_s": r.avg_tok_s,
                 "min_tok_s": r.min_tok_s, "median_tok_s": r.median_tok_s, "max_tok_s": r.max_tok_s,
                 "samples": r.samples.iter().map(|s| json!({ "t_ms": s.t_ms, "tok_s": s.tok_s, "kind": s.kind, "regime": s.regime })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
@@ -433,7 +535,21 @@ impl StatsEngine {
         self.live_ratio = if ratio.is_finite() && ratio > 0.0 { ratio } else { 1.0 };
     }
 
+    /// Record one delta and immediately refresh every derived aggregate.
+    /// Convenience for callers that feed one delta at a time; the streaming
+    /// paths use `record_delta_raw` + one `refresh` per drained batch.
     pub fn record_delta(&mut self, kind: &str, text: &str, now_ms: f64) {
+        self.record_delta_raw(kind, text, now_ms);
+        self.refresh();
+    }
+
+    /// Record a delta stamped with its ARRIVAL time from the engine. Cheap
+    /// (amortized O(1)): only per-delta bookkeeping whose result depends on
+    /// the timestamp. The expensive session aggregates (clustering, live
+    /// min/median/max, totals) are NOT recomputed here — call `refresh()`
+    /// after a batch. Timing is therefore independent of how fast the
+    /// backend can process or the UI can consume.
+    pub fn record_delta_raw(&mut self, kind: &str, text: &str, now_ms: f64) {
         if text.is_empty() {
             return;
         }
@@ -475,9 +591,6 @@ impl StatsEngine {
         }
         self.session_tokens += est;
         self.trim_session();
-        // Recompute analytics on every new delta so the server has the latest
-        // derived data to push immediately (no fixed interval).
-        self.recompute_analytics();
 
         if self.first_token_at == 0.0 {
             self.first_token_at = now_ms;
@@ -522,6 +635,19 @@ impl StatsEngine {
             });
         }
 
+        self.live.tok_s = rate;
+    }
+
+    /// Recompute the derived live stats and session analytics from the
+    /// deltas recorded so far. Uses only recorded arrival timestamps (the
+    /// last delta's clock for `gen_ms`), never the wall clock at call time.
+    pub fn refresh(&mut self) {
+        if self.last_delta_at <= 0.0 {
+            return;
+        }
+        let now = self.last_delta_at;
+        self.recompute_analytics();
+        let rate = self.live.tok_s;
         // Live min/median/max.
         let all_tok: f64 = self.events.iter().map(|e| e.est_tokens).sum();
         let reason_tok: f64 = self.events.iter().filter(|e| e.kind == "reasoning").map(|e| e.est_tokens).sum();
