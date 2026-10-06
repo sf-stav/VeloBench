@@ -38,7 +38,9 @@ to produce them:
 
 - **Automatically** — push a tag (`git tag v0.1.0 && git push --tags`); the
   included GitHub Actions workflow (`.github/workflows/release.yml`) builds
-  all four platforms and attaches the artifacts to the release.
+  the three CI platforms (Linux x86_64, Linux arm64, macOS arm64) and attaches
+  the artifacts to the release. Intel macOS has no runner label any more, so
+  it takes the installer's source-build path.
 - **Linux builds on an aarch64 Linux box** (e.g. a ARM server/Pi) — both
   Linux targets cross-compile with zig as the C compiler, fully static
   (no glibc dependency, runs on any distribution):

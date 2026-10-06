@@ -1,11 +1,16 @@
-# Builds release binaries for all four supported platforms and attaches them
+# Builds release binaries for the three platforms CI can build and attaches them
 # to a GitHub release. Triggered by pushing a tag:  git tag v0.1.0 && git push --tags
 #
 # Artifacts (what install.sh downloads):
 #   velobenchmark-linux-x86_64.tar.gz
 #   velobenchmark-linux-arm64.tar.gz
-#   velobenchmark-macos-x86_64.tar.gz
 #   velobenchmark-macos-arm64.tar.gz
+#
+# No Intel-macOS leg: GitHub retired the macos-13 runner label, so that job
+# queued forever with no runner and blocked the release job behind it. Intel
+# macOS users get install.sh's source-build fallback (it has always been that
+# way — no release ever shipped a macos-x86_64 tarball). If an Intel runner
+# label comes back, add the leg and the fourth artifact name with it.
 
 name: release
 
@@ -27,7 +32,6 @@ jobs:
         include:
           - { name: linux-x86_64, runs-on: ubuntu-latest,   node-arch: x64 }
           - { name: linux-arm64,  runs-on: ubuntu-24.04-arm, node-arch: arm64 }
-          - { name: macos-x86_64, runs-on: macos-13,        node-arch: x64 }
           - { name: macos-arm64,  runs-on: macos-14,        node-arch: arm64 }
     steps:
       - uses: actions/checkout@v4

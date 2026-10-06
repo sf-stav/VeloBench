@@ -6,8 +6,17 @@ Copy everything below the line into the release session as its prompt.
 
 You are the release session for **VeloBenchmark**, a single-binary LLM
 benchmarking console at **https://github.com/sf-stav/VeloBench**. Your job is
-to publish prebuilt release artifacts for all four supported platforms so the
-project's one-line installer takes its fast path on every machine.
+to publish prebuilt release artifacts for the three platforms CI can build
+(Linux x86_64, Linux arm64, macOS arm64) so the project's one-line installer
+takes its fast path on every machine it can.
+
+**Skip Intel macOS — permanently, and do not "fix" it.** GitHub retired the
+`macos-13` runner label, so a `macos-x86_64` matrix leg sits queued forever
+with no runner and, because the `release` job `needs: build`, blocks the whole
+release. No VeloBenchmark release has ever shipped a `macos-x86_64` tarball
+(v0.1.0–v0.3.0 all carry exactly the three), and `install.sh` already falls
+back to a source build there. Re-add the leg only if an Intel macOS runner
+label exists again.
 
 ## The contract (do not deviate)
 
@@ -17,10 +26,12 @@ project's one-line installer takes its fast path on every machine.
 https://github.com/sf-stav/VeloBench/releases/latest/download/velobenchmark-<os>-<arch>.tar.gz
 ```
 
-- `<os>` ∈ `linux`, `macos`; `<arch>` ∈ `x86_64`, `arm64` — so exactly four
-  tarballs:
+- `<os>` ∈ `linux`, `macos`; `<arch>` ∈ `x86_64`, `arm64`. The installer can
+  ask for four names, and three are produced:
   `velobenchmark-linux-x86_64.tar.gz`, `velobenchmark-linux-arm64.tar.gz`,
-  `velobenchmark-macos-x86_64.tar.gz`, `velobenchmark-macos-arm64.tar.gz`.
+  `velobenchmark-macos-arm64.tar.gz`. `velobenchmark-macos-x86_64.tar.gz` is
+  deliberately **not** built (no Intel macOS runner — see above), and the
+  installer source-builds instead.
 - Each tarball must contain **one file named `velobench`** at its root (the
   release binary; ideally `strip`ped). A sibling `<name>.sha256` checksum file
   is nice to have.
@@ -32,9 +43,9 @@ https://github.com/sf-stav/VeloBench/releases/latest/download/velobenchmark-<os>
 ### Option A — CI (preferred)
 
 The repo contains `.github/workflows/release.yml`. It triggers on a `v*` tag,
-builds on four runners (`ubuntu-latest`, `ubuntu-24.04-arm`, `macos-13`,
-`macos-14`), packages each platform, and attaches everything to a release
-with generated notes.
+builds on three runners (`ubuntu-latest`, `ubuntu-24.04-arm`, `macos-14`),
+packages each platform, and attaches everything to a release with generated
+notes.
 
 Steps:
 
@@ -86,10 +97,11 @@ gh release create v<version> dist/velobenchmark-*.tar.gz dist/*.sha256 \
 
 ## Verification (always do this)
 
-1. All four URLs answer 200:
+1. All three URLs answer 200 (`macos-x86_64` is expected to 404 — it is not
+   built, by design):
 
    ```bash
-   for a in linux-x86_64 linux-arm64 macos-x86_64 macos-arm64; do
+   for a in linux-x86_64 linux-arm64 macos-arm64; do
      curl -sI -o /dev/null -w "%{http_code} $a\n" \
        "https://github.com/sf-stav/VeloBench/releases/latest/download/velobenchmark-$a.tar.gz"
    done
@@ -126,7 +138,7 @@ gh release create v<version> dist/velobenchmark-*.tar.gz dist/*.sha256 \
 
 ## Deliverables for this session
 
-1. All four tarballs (+ checksums) attached to a GitHub release.
-2. The verification loop above printing `200` four times.
+1. All three tarballs (+ checksums) attached to a GitHub release.
+2. The verification loop above printing `200` three times.
 3. A short report: release tag, artifact list with sizes, verification
    output, and any platform that could not be produced (with the reason).
