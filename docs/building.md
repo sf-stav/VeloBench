@@ -34,14 +34,16 @@ Environment overrides: `VELOBENCHMARK_PORT`, `VELOBENCHMARK_DIR` (default
 Release artifacts are plain tarballs named
 `velobenchmark-<os>-<arch>.tar.gz` (containing the `velobench` binary) —
 the installer looks for exactly that name on the latest release. Three ways
-to produce them:
+to produce them. **Only the first is the supported release path.**
 
-- **Automatically** — push a tag (`git tag v0.1.0 && git push --tags`); the
+- **Automatically (the release path — use this)** — push a tag
+  (`git tag v0.1.0 && git push --tags`); the
   included GitHub Actions workflow (`.github/workflows/release.yml`) builds
   the three CI platforms (Linux x86_64, Linux arm64, macOS arm64) and attaches
   the artifacts to the release. Intel macOS has no runner label any more, so
   it takes the installer's source-build path.
-- **Linux builds on an aarch64 Linux box** (e.g. a ARM server/Pi) — both
+- **Linux builds on an aarch64 Linux box** (optional, parked — see the note
+  below) — both
   Linux targets cross-compile with zig as the C compiler, fully static
   (no glibc dependency, runs on any distribution):
 
@@ -71,6 +73,14 @@ gh release create v<version> dist/velobenchmark-*.tar.gz dist/*.sha256 \
 macOS artifacts require building on macOS (Apple SDK licensing) — use the
 CI workflow or a Mac; the installer falls back to a source build when a
 platform's artifact is missing.
+
+> **Parked: the cross-compile route.** The zig/`cargo-zigbuild` path above is
+> a Linux-only convenience for producing static Linux tarballs on one box. It
+> is **not** a release path and it cannot produce macOS artifacts — Apple SDK
+> licensing rules out building a macOS binary from Linux, and `cargo-zigbuild`
+> has no Apple target support. macOS releases come from the CI workflow's
+> `macos-15` runner or from a real Mac. Keep `scripts/dist.sh` for Linux
+> tarballs and local sanity checks; do not spend release time on it.
 
 ---
 

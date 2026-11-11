@@ -68,7 +68,14 @@ Steps:
 4. If the release job succeeded but you want to fix an asset, delete the tag,
    or use `gh release upload <tag> <files> --clobber`.
 
-### Option B — local builds (fallback or supplement)
+### Option B — local builds (supplement only, not a release path)
+
+> **Parked.** Option A (push a tag, let CI build) is the only supported
+> release path. It publishes Linux x86_64, Linux arm64 and macOS arm64 in
+> about **15 minutes**. Option B below is a local convenience for Linux
+> tarballs and sanity checks — it cannot produce macOS artifacts, so a
+> release built this way is always incomplete. Do not spend release time
+> on it.
 
 `scripts/dist.sh <optional-rust-triple>` builds and packages
 `dist/velobenchmark-<os>-<arch>.tar.gz` (+ `.sha256`). Details and
@@ -77,8 +84,7 @@ Quick facts:
 
 - Native run on any machine covers that machine's platform.
 - On an **aarch64 Linux host** (the dev server is one), both Linux targets
-  cross-compile as **fully static musl** binaries — the recommended artifact
-  kind, since they run on any distribution:
+  cross-compile as **fully static musl** binaries:
 
   ```bash
   pip install --user ziglang
