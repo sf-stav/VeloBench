@@ -3,6 +3,32 @@
 High-level release notes for VeloBenchmark. Minor bug fixes and small optimizations are grouped under
 generic language where they aren't individually notable.
 
+## v0.4.0 — SQLite session store, prefill-by-size reports, headless run API
+
+- **Saved sessions live in SQLite.** Every recorded turn used to sit in one `benchmarks.json`
+  that was loaded whole into memory, cloned in full on each sessions/restore/analysis/report
+  request, and re-serialised after every finished turn. Turns now live in a SQLite store, so
+  memory stays flat and pages stay fast at any history size. Existing data is migrated on
+  first boot.
+- **Prefill speed by prompt size.** The report gains a bar chart and a size / TTFT / tok-s
+  table, so prefill throughput can be read against payload size instead of inferred from
+  TTFT alone.
+- **Context fills are baked into the binary.** Payloads for 1K–512K are generated at build
+  time and embedded, so a fill is a lookup rather than a tokenizer download plus network
+  round-trip. The trade-off is documented in `docs/limitations.md`.
+- **Concurrent runs report only the lanes still generating.** The runner card summed every
+  worker's rate, including lanes that had already finished, which overstated throughput
+  exactly when the surviving lanes had sped up. Each lane still shows its own final rate.
+- **Settings open as focused overlays.** Add/edit provider and model no longer append a form
+  to the bottom of a long page; they open as a centred panel with Escape and backdrop
+  dismissal.
+- **Headless run API.** `POST /api/run` runs a plan without the chat UI, accepting provider,
+  model, steps, temperature and per-param overrides. See `docs/run-api.md`.
+- **Fixed: telemetry streams no longer panic or desync on long multibyte output.**
+- **Fixed: a model's "Reasoning Enabled = off" is honoured as a master switch**, and
+  `thinking: false` is sent when reasoning is disabled.
+- **Fixed: New Chat keeps the selected model.**
+
 ## v0.3.0 — Server-computed everything, text reports, honest timing
 
 - **Every figure is computed by the server.** The Analytics report, the Compare page, the

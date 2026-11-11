@@ -957,6 +957,29 @@
           </div>
           <canvas id="cvTokens" class="chart"></canvas>
         </div>
+        <div class="chart-card card">
+          <div class="chart-head">
+            <h3>Prefill speed by prompt size</h3>
+            <span class="chart-unit">prompt tok ÷ TTFT · tok/s · n={{ prefillBySize().length }}</span>
+          </div>
+          <canvas id="cvPrefill" class="chart"></canvas>
+          @if (prefillBySize().length) {
+            <table class="bins">
+              <thead>
+                <tr><th>size (prompt tok)</th><th class="num">TTFT</th><th class="num">tok/s</th></tr>
+              </thead>
+              <tbody>
+                @for (r of prefillBySizeSorted(); track $index) {
+                  <tr>
+                    <td>{{ fmtInt(r.size) }}</td>
+                    <td class="num">{{ fmtMs(r.ttft) }}</td>
+                    <td class="num">{{ fmt1(r.rate) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </div>
       </div>
       <div class="chart-card card">
         <div class="chart-head">

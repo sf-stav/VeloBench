@@ -39,6 +39,7 @@
                 @if (p.id === settings().active_provider_id) { <span class="tag">active</span> }
               </div>
               <div class="pr-meta muted mono">{{ p.base_url }}</div>
+              <div class="pr-meta muted mono" title="Provider id — use this for the /api/run endpoint">id: {{ p.id }}</div>
               <div class="pr-models muted">{{ p.models.length }} model(s) · {{ modelsLabel(p) }}</div>
               @if (testResult()[p.id]) { <div class="pr-models muted">{{ testResult()[p.id] }}</div> }
             </div>
@@ -117,7 +118,8 @@
       }
 
       @if (editing) {
-        <div class="editor">
+        <div class="modal" (click)="editing = false">
+        <div class="modal-card editor-card" (click)="$event.stopPropagation()">
           <h4>@if (form.id) { Edit provider } @else { Add provider }</h4>
           <div class="hint muted" style="margin-bottom:8px">
             Providers are connection-only: identity + endpoint + key. Models (with their own parameters,
@@ -140,10 +142,12 @@
             <button class="btn" (click)="editing = false">Cancel</button>
           </div>
         </div>
+        </div>
       }
 
       @if (modelEditor) {
-        <div class="editor">
+        <div class="modal" (click)="closeModelEditor()">
+        <div class="modal-card editor-card" (click)="$event.stopPropagation()">
           <h4>@if (modelEditor === 'new') { Add model } @else { Edit model }</h4>
           <div class="field">
             <label>Model id <button class="link" (click)="openPicker('model')">pick / autocomplete</button></label>
@@ -200,6 +204,7 @@
             <button class="btn primary" (click)="saveModel()">Save model</button>
             <button class="btn" (click)="closeModelEditor()">Cancel</button>
           </div>
+        </div>
         </div>
       }
     </div>

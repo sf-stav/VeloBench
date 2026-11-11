@@ -219,15 +219,13 @@ export class ChatComponent implements OnInit {
     this.session.stop();
   }
   /** Reset everything: clear the chat and the aggregated stats, starting a fresh
-   *  benchmark. Asks first, then clears instantly and reverts to the default. */
+   *  benchmark. Asks first, then clears instantly. The selected model+provider
+   *  is left unchanged. */
   async newChat(): Promise<void> {
     if (this.session.messages().length > 0 || this.sessionActive()) {
       const ok = window.confirm('Stop the current session and clear the chat + stats?');
       if (!ok) return;
     }
-    // Drop any session-only model override so the default model+provider is
-    // selected again (per the "Default model" setting).
-    this.ss.clearSessionConfig();
     await this.session.newChat();
   }
   removeImage(i: number): void {

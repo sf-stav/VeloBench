@@ -50,6 +50,15 @@ single-binary, zero-dependency tool.
   server's tokenizer. Without either, counts are estimated; a per-model live
   calibration ratio aligns live tok/s with the provider's authoritative
   usage numbers, but it is still an estimate.
+- **Context fills are precomputed under one reference tokenizer.** The
+  supported context sizes (1K–512K, in powers and a few 3× multiples) are
+  baked into the binary at build time and served instantly. Each payload is
+  *exactly* the requested size under the reference tokenizer
+  (Qwen/Qwen3.8-27B); a model with a different tokenizer will count it a few
+  percent off. Reported prompt tokens always come from the model's usage, so
+  measurements stay honest — only the *nominal* size label can drift. Bench
+  steps with a non-standard `depth+pp` still build their fill dynamically
+  from the Gutenberg corpus.
 - **Fixed-shape bench steps are synthetic.** Depth/prefill shapes fill context
   from a built-in Project Gutenberg corpus (with fallback filler if the
   corpus is unavailable). They measure serving performance, not prompt

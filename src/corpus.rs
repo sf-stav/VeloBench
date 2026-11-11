@@ -16,7 +16,42 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use include_dir::include_dir;
+
 use crate::tokenizer::TokenizerHandle;
+
+/// Precomputed context-fill payloads, baked in at compile time by
+/// `scripts/gen_context_payloads.py` (dev-time only). Sizes mirror
+/// `tests::CONTEXT_SIZES_K`. Each file is exactly `tokens` tokens under the
+/// reference tokenizer (Qwen/Qwen3.8-27B); a different model may count it a
+/// few percent off, but reported prompt tokens still come from usage.
+static PRECOMPUTED_FILLS: include_dir::Dir<'static> =
+    include_dir!("$CARGO_MANIFEST_DIR/payloads");
+
+/// Token count → embedded file name (keep in sync with CONTEXT_SIZES_K).
+const PRECOMPUTED: &[(u64, &str)] = &[
+    (1024, "context-1k.txt"),
+    (2048, "context-2k.txt"),
+    (4096, "context-4k.txt"),
+    (8192, "context-8k.txt"),
+    (16384, "context-16k.txt"),
+    (32768, "context-32k.txt"),
+    (65536, "context-64k.txt"),
+    (131072, "context-128k.txt"),
+    (196608, "context-192k.txt"),
+    (262144, "context-256k.txt"),
+    (393216, "context-384k.txt"),
+    (524288, "context-512k.txt"),
+];
+
+/// The precomputed fill for an exact supported size, or `None` when the size
+/// has no baked-in payload (e.g. an arbitrary bench depth+pp). Callers fall
+/// back to `build_exact_fill`'s dynamic path in that case.
+pub fn precomputed_fill(n: u64) -> Option<&'static str> {
+    let (_, name) = PRECOMPUTED.iter().find(|(t, _)| *t == n)?;
+    let file = PRECOMPUTED_FILLS.get_file(name)?;
+    std::str::from_utf8(file.contents()).ok()
+}
 
 /// Default corpus (Adventures of Sherlock Holmes).
 pub const BOOK_URL: &str = "https://www.gutenberg.org/files/1661/1661-0.txt";
@@ -140,6 +175,11 @@ pub async fn build_exact_fill(
 ) -> Option<String> {
     if n == 0 {
         return Some(String::new());
+    }
+    // Supported sizes are precomputed at dev time and served straight from the
+    // embedded binary — no tokenizer or network work on the request path.
+    if let Some(pre) = precomputed_fill(n) {
+        return Some(pre.to_string());
     }
     // Local: exact by construction (decode of n ids re-encodes to n ids for
     // natural text; drift is re-anchored below when a count is available).
@@ -265,4 +305,25 @@ pub fn fallback_fill(n: u64) -> String {
     }
     out.truncate(chars);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn precomputed_fill_serves_every_supported_size() {
+        for (tokens, _name) in PRECOMPUTED {
+            let text = precomputed_fill(*tokens)
+                .unwrap_or_else(|| panic!("missing precomputed fill for {tokens} tokens"));
+            assert!(!text.is_empty(), "{tokens}-token fill is empty");
+        }
+    }
+
+    #[test]
+    fn precomputed_fill_rejects_unsupported_sizes() {
+        for n in [1u64, 3, 513, 1023, 1025, 100_000] {
+            assert!(precomputed_fill(n).is_none(), "{n} should not be precomputed");
+        }
+    }
 }

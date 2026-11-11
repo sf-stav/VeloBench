@@ -1,6 +1,6 @@
 [package]
 name = "velobench"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 description = "VeloBench — LLM live-stats benchmarking and chat console"
 license = "MIT"
@@ -50,6 +50,7 @@ tree-sitter-bash = "0.25.1"
 tree-sitter-html = "0.23.2"
 tree-sitter-css = "0.25.0"
 regex = "1.13.1"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [build-dependencies]
 prost-build = "0.13"

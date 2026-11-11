@@ -19,6 +19,7 @@ mod proxy;
 mod report_deck;
 mod report_fmt;
 mod report_view;
+mod run_api;
 mod text_report;
 mod server;
 mod sessions_view;
@@ -29,6 +30,7 @@ mod tests;
 #[cfg(test)]
 mod corpus_test;
 mod tokenizer;
+mod turn_store;
 mod ws;
 
 use clap::Parser;

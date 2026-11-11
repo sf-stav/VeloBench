@@ -1,4 +1,4 @@
-import { Component, OnDestroy, computed, signal } from '@angular/core';
+import { Component, HostListener, OnDestroy, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { SettingsService } from '../../services/settings.service';
 import { ApiService } from '../../services/api.service';
@@ -338,6 +338,18 @@ export class SettingsComponent implements OnDestroy {
     if (!confirm('Wipe ALL benchmarks, sessions and settings? Test definitions are kept. This cannot be undone.')) return;
     await this.api.wipeData();
     window.location.reload();
+  }
+
+  /** Escape closes the provider/model overlay (it no longer sits inline). */
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.pickerOpen) {
+      this.pickerOpen = false;
+    } else if (this.modelEditor) {
+      this.closeModelEditor();
+    } else if (this.editing) {
+      this.editing = false;
+    }
   }
 
   newProvider(): void {

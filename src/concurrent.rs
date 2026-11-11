@@ -92,6 +92,11 @@ pub struct ConcRun {
     #[serde(default)]
     pub error: String,
     pub snaps: Vec<WorkerSnap>,
+    /// The run-level temperature / request params (StartConc), applied by every worker step.
+    #[serde(skip)]
+    pub temperature: Option<f64>,
+    #[serde(skip)]
+    pub params: Vec<ParamOverride>,
 }
 
 impl ConcRun {
@@ -111,6 +116,8 @@ impl ConcRun {
         if let Some(snaps) = v.get_mut("snaps").and_then(|s| s.as_array_mut()) {
             for (w, o) in self.snaps.iter().zip(snaps.iter_mut()) {
                 let tokens = (w.completion_tokens as f64).max(js_round(w.est_tokens));
+                // A lane's own rate: live while streaming, its exact final
+                // rate once settled.
                 let rate = if tokens < 2.0 {
                     None
                 } else {
@@ -118,9 +125,15 @@ impl ConcRun {
                     let r = if settled { w.final_tok_s.unwrap_or(0.0) } else { w.tok_s };
                     if r > 0.0 { Some(r) } else { None }
                 };
+                // The live aggregate counts ONLY lanes still in flight. A
+                // settled lane froze its rate while it was still competing with
+                // its peers, but the survivors speed up as lanes drop out, so
+                // adding settled rates would overstate the aggregate.
                 if let Some(r) = rate {
-                    sum_rate += r;
-                    n_rate += 1;
+                    if w.state == "streaming" {
+                        sum_rate += r;
+                        n_rate += 1;
+                    }
                 }
                 sum_tokens += tokens;
                 if let Some(obj) = o.as_object_mut() {
@@ -242,6 +255,14 @@ pub struct StartConc {
     /// legacy single-shape run (fill_tokens + tg).
     #[serde(default)]
     pub test_id: String,
+    /// Optional temperature for every request of the run (wins over the test's own; the run
+    /// API's `temperature`). None = the test's temperature, as before.
+    #[serde(default)]
+    pub temperature: Option<f64>,
+    /// Optional request fields sent on EVERY request of the run, after the model config (the run
+    /// API's `params`: sampling and penalties, e.g. {"top_p": 0.95, "presence_penalty": 1.5}).
+    #[serde(default)]
+    pub params: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 fn default_tg() -> u32 {
@@ -259,7 +280,7 @@ fn default_workers() -> u32 {
 /// requests apart. The generation budget mirrors the single-stream runner:
 /// a step budget wins, then the test-level max_tokens, then no override at
 /// all (tg = 0 → the provider/model default — never a 1-token budget).
-fn plan_from_test(t: &crate::tests::TestDef) -> Vec<PlanStep> {
+pub(crate) fn plan_from_test(t: &crate::tests::TestDef) -> Vec<PlanStep> {
     // Effective budget per step: step tg > 0 wins, else the test-level
     // max_tokens, else 0 (no override).
     let eff_tg = |s: &crate::tests::TestStep| -> u32 {
@@ -379,6 +400,19 @@ fn plan_from_test(t: &crate::tests::TestDef) -> Vec<PlanStep> {
     out
 }
 
+/// Resolve a step's per-step reasoning override against the model config.
+/// "off" disables reasoning; "" inherits the model's "Reasoning Enabled"
+/// checkbox; an explicit effort level is honoured only when the model has
+/// reasoning enabled (the checkbox is the master switch — a step cannot turn
+/// reasoning on for a model that has it off).
+fn step_reasoning_enabled(cfg_on: bool, step_effort: &str) -> bool {
+    if step_effort == "off" {
+        false
+    } else {
+        cfg_on
+    }
+}
+
 /// Start a concurrent run: validates the model entry, allocates the shared
 /// session id and spawns the barrier orchestrator.
 pub async fn start(st: &AppState, req: StartConc) -> Result<ConcRun, String> {
@@ -445,6 +479,20 @@ pub async fn start(st: &AppState, req: StartConc) -> Result<ConcRun, String> {
             title,
         )
     };
+    // A run-level temperature wins over the test's own on every request step (the single-stream
+    // run API's precedence); image steps pick it up in run_step.
+    let plan: Vec<PlanStep> = match req.temperature {
+        None => plan,
+        Some(t) => plan.into_iter().map(|p| match p {
+            PlanStep::Req { title, prompt, fill_tokens, tg, exact_tg, temperature: _, reasoning_effort, stateless, expect, expect_regex } =>
+                PlanStep::Req { title, prompt, fill_tokens, tg, exact_tg, temperature: Some(t), reasoning_effort, stateless, expect, expect_regex },
+            other => other,
+        }).collect(),
+    };
+    let run_params: Vec<ParamOverride> = req.params.iter().flatten().map(|(k, v)| ParamOverride {
+        key: k.clone(),
+        value: match v { serde_json::Value::String(s) => s.clone(), other => other.to_string() },
+    }).collect();
     let label = if req.label.trim().is_empty() {
         default_label
     } else {
@@ -477,6 +525,8 @@ pub async fn start(st: &AppState, req: StartConc) -> Result<ConcRun, String> {
         step_title: String::new(),
         error: String::new(),
         snaps: (0..workers).map(WorkerSnap::queued).collect(),
+        temperature: req.temperature,
+        params: run_params,
     };
 
     let stop = Arc::new(AtomicBool::new(false));
@@ -771,7 +821,7 @@ async fn run_step(
     expect: String,
     expect_regex: String,
 ) -> Result<String, String> {
-    let (provider_id, model, model_uid, section, turn_label) = {
+    let (provider_id, model, model_uid, section, turn_label, run_temperature, run_params) = {
         let run = match st.conc.get(&run_id) {
             Some(r) => r,
             None => return Err("run vanished".into()),
@@ -790,8 +840,12 @@ async fn run_step(
             } else {
                 format!("{} · {}", run.label, step_title)
             },
+            run.temperature,
+            run.params.clone(),
         )
     };
+    // A step without its own temperature (image steps) takes the run's.
+    let temperature = temperature.or(run_temperature);
     let label = turn_label;
     let request_id = format!("{run_id}-w{}-{}", idx + 1, crate::settings::short_id());
 
@@ -847,11 +901,7 @@ async fn run_step(
         messages,
         reasoning_enabled: {
             let cfg_on = model_cfg.as_ref().map(|m| m.reasoning_enabled).unwrap_or(false);
-            match reasoning_effort.as_str() {
-                "off" => false,
-                "" => cfg_on,
-                _ => true,
-            }
+            step_reasoning_enabled(cfg_on, reasoning_effort.as_str())
         },
         reasoning_effort: match reasoning_effort.as_str() {
             "" => model_cfg
@@ -876,6 +926,11 @@ async fn run_step(
             }
             if let Some(t) = temperature {
                 ov.push(ParamOverride { key: "temperature".into(), value: t.to_string() });
+            }
+            // Run-level params last (build_payload applies overrides in order, so they win).
+            for p in &run_params {
+                ov.retain(|o| o.key != p.key);
+                ov.push(p.clone());
             }
             ov
         },
@@ -1212,6 +1267,19 @@ mod tests {
             other => panic!("expected Markers, got {other:?}"),
         }
     }
+
+    /// The model's "Reasoning Enabled" checkbox is the master switch: a step
+    /// may ask for an effort level, but it must not turn reasoning on for a
+    /// model that has it disabled.
+    #[test]
+    fn step_effort_cannot_enable_reasoning_on_a_disabled_model() {
+        assert!(!step_reasoning_enabled(false, "low"));
+        assert!(!step_reasoning_enabled(false, "off"));
+        assert!(!step_reasoning_enabled(false, ""));
+        assert!(step_reasoning_enabled(true, "low"));
+        assert!(step_reasoning_enabled(true, ""));
+        assert!(!step_reasoning_enabled(true, "off"));
+    }
 }
 
 #[cfg(test)]
@@ -1234,6 +1302,7 @@ mod view_tests {
             model_uid: String::new(), fill_tokens: 0, tg: 0, workers: snaps.len(), repeats: 1, session: "s".into(),
             started_at: String::new(), finished: false, test_id: String::new(), test_title: String::new(),
             step: 1, steps: 1, step_title: String::new(), error: String::new(), snaps,
+            temperature: None, params: Vec::new(),
         }
     }
 
@@ -1248,7 +1317,7 @@ mod view_tests {
         let v = r.to_view();
         assert_eq!(v["running"], serde_json::json!(1));
         assert_eq!(v["done"], serde_json::json!(2));
-        assert_eq!(v["sum_tok_s"], serde_json::json!(200.0), "90 live + 110 settled; 1-token worker excluded");
+        assert_eq!(v["sum_tok_s"], serde_json::json!(90.0), "only the streaming lane's live rate; settled lanes excluded");
         assert_eq!(v["sum_tokens"], serde_json::json!(161.0));
         assert_eq!(v["snaps"][0]["tokens"], serde_json::json!(40.0));
         assert_eq!(v["snaps"][0]["rate"], serde_json::json!(90.0));

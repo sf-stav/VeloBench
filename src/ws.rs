@@ -1053,6 +1053,7 @@ async fn calibrate_probe_once(
         stream: true,
         stream_options: Some(crate::models::StreamOptions { include_usage: true }),
         reasoning_effort: None,
+        thinking: None,
         temperature: Some(0.0),
         extra: serde_json::json!({ "max_tokens": budget_tokens })
             .as_object()

@@ -17,7 +17,6 @@ use crate::settings::Settings;
 use crate::tests::TestDef;
 
 const SETTINGS_FILE: &str = "settings.json";
-const BENCHMARKS_FILE: &str = "benchmarks.json";
 const ANALYSES_FILE: &str = "analyses.json";
 const COMPARISONS_FILE: &str = "comparisons.json";
 const TESTS_FILE: &str = "tests.json";
@@ -53,7 +52,8 @@ pub struct SessionMeta {
 pub struct Store {
     data_dir: PathBuf,
     settings: Arc<RwLock<Settings>>,
-    benchmarks: Arc<RwLock<Vec<Benchmark>>>,
+    /// Recorded turns live in SQLite (see `turn_store`), never in memory.
+    turns: crate::turn_store::TurnStore,
     analyses: Arc<RwLock<Vec<SessionAnalysis>>>,
     tests: Arc<RwLock<Vec<TestDef>>>,
     session_meta: Arc<RwLock<HashMap<String, SessionMeta>>>,
@@ -65,8 +65,7 @@ impl Store {
     pub async fn new(data_dir: PathBuf) -> std::io::Result<Self> {
         tokio::fs::create_dir_all(&data_dir).await?;
         let settings = load_or_default::<Settings>(&data_dir.join(SETTINGS_FILE)).await;
-        let benchmarks =
-            load_or_default::<Vec<Benchmark>>(&data_dir.join(BENCHMARKS_FILE)).await;
+        let turns = crate::turn_store::TurnStore::open(data_dir.clone()).await?;
         let analyses = load_or_default::<Vec<SessionAnalysis>>(&data_dir.join(ANALYSES_FILE)).await;
         // Test definitions: user tests from disk, seeded with the built-ins.
         let mut tests = load_or_default::<Vec<TestDef>>(&data_dir.join(TESTS_FILE)).await;
@@ -89,7 +88,7 @@ impl Store {
         Ok(Self {
             data_dir,
             settings: Arc::new(RwLock::new(settings)),
-            benchmarks: Arc::new(RwLock::new(benchmarks)),
+            turns,
             analyses: Arc::new(RwLock::new(analyses)),
             tests: Arc::new(RwLock::new(tests)),
             session_meta: Arc::new(RwLock::new(session_meta)),
@@ -109,23 +108,15 @@ impl Store {
         if a == b {
             return Err("Pick two different sessions.".into());
         }
-        let kind_of = |sid: &str, benches: &Vec<Benchmark>| {
-            benches
-                .iter()
-                .find(|x| x.session == sid)
-                .map(|x| if x.kind == "concurrent" { "concurrent" } else { "single" })
-                .unwrap_or("single")
-        };
-        let benches = self.benchmarks.read().await;
-        let existing: Vec<String> = benches.iter().map(|x| x.session.clone()).collect();
+        let mut kinds = Vec::new();
         for sid in [a, b] {
-            if !existing.iter().any(|s| s == sid) {
+            if !self.turns.has_session(sid).await {
                 return Err(format!("Session {sid} has no recorded turns."));
             }
+            let k = self.turns.session_kind(sid).await;
+            kinds.push(if k.as_deref() == Some("concurrent") { "concurrent" } else { "single" });
         }
-        let ka = kind_of(a, &benches);
-        let kb = kind_of(b, &benches);
-        drop(benches);
+        let (ka, kb) = (kinds[0], kinds[1]);
         if ka != kb {
             return Err(format!("Cannot compare a {ka} session with a {kb} session."));
         }
@@ -164,10 +155,7 @@ impl Store {
             let mut s = self.settings.write().await;
             *s = Settings::default();
         }
-        {
-            let mut b = self.benchmarks.write().await;
-            b.clear();
-        }
+        self.turns.clear().await;
         {
             let mut a = self.analyses.write().await;
             a.clear();
@@ -178,7 +166,6 @@ impl Store {
         }
         self.persist_settings().await;
         let _ = write_json(&self.data_dir.join(SESSION_META_FILE), &HashMap::<String, SessionMeta>::new()).await;
-        let _ = write_json(&self.data_dir.join(BENCHMARKS_FILE), &Vec::<Benchmark>::new()).await;
         let _ = write_json(&self.data_dir.join(ANALYSES_FILE), &Vec::<SessionAnalysis>::new()).await;
         tracing::info!("history wiped: benchmarks, analyses and settings cleared (tests kept)");
     }
@@ -291,82 +278,39 @@ impl Store {
 
     // ---------- benchmarks ----------
 
-    pub async fn benchmarks(&self) -> Vec<Benchmark> {
-        self.benchmarks.read().await.clone()
+    /// Every turn's lightweight summary, in insertion order (Sessions list).
+    pub async fn turn_summaries(&self) -> Vec<crate::sessions_view::TurnSummary> {
+        self.turns.summaries().await
+    }
+
+    /// Full records of one session, oldest first.
+    pub async fn session_turns(&self, session: &str) -> Vec<Benchmark> {
+        self.turns.session_turns(session).await
+    }
+
+    /// Direct access for streaming exports.
+    pub fn turn_store(&self) -> &crate::turn_store::TurnStore {
+        &self.turns
     }
 
     pub async fn benchmark(&self, id: &str) -> Option<Benchmark> {
-        self.benchmarks.read().await.iter().find(|b| b.id == id).cloned()
+        self.turns.get(id).await
     }
 
     pub async fn add_benchmark(&self, b: Benchmark) -> Benchmark {
-        let mut g = self.benchmarks.write().await;
-        g.push(b.clone());
-        drop(g);
-        self.persist_benchmarks().await;
+        if !self.turns.put(b.clone()).await {
+            tracing::warn!(id = %b.id, "failed to save turn");
+        }
         b
     }
 
     pub async fn delete_benchmark(&self, id: &str) -> bool {
-        let mut g = self.benchmarks.write().await;
-        let before = g.len();
-        g.retain(|b| b.id != id);
-        let changed = g.len() != before;
-        drop(g);
-        if changed {
-            self.persist_benchmarks().await;
-        }
-        changed
-    }
-
-    async fn persist_benchmarks(&self) {
-        let snapshot = self.benchmarks.read().await.clone();
-        let path = self.data_dir.join(BENCHMARKS_FILE);
-        if let Err(e) = write_json(&path, &snapshot).await {
-            tracing::warn!(path = %path.display(), "write benchmarks failed: {e}");
-        }
+        self.turns.delete(id).await
     }
 
     /// Replace one record in place (used to persist analysis results).
     pub async fn update_benchmark(&self, updated: Benchmark) -> bool {
-        let mut g = self.benchmarks.write().await;
-        let mut changed = false;
-        for b in g.iter_mut() {
-            if b.id == updated.id {
-                *b = updated.clone();
-                changed = true;
-                break;
-            }
-        }
-        drop(g);
-        if changed {
-            self.persist_benchmarks().await;
-        }
-        changed
-    }
-
-    /// Replace several records in place with a single persistence pass
-    /// (used by regime backfill so a boot-time sweep writes the file once).
-    pub async fn update_benchmarks<I>(&self, updates: I) -> usize
-    where
-        I: IntoIterator<Item = Benchmark>,
-    {
-        let mut g = self.benchmarks.write().await;
-        let mut changed = 0usize;
-        for updated in updates {
-            for b in g.iter_mut() {
-                if b.id == updated.id {
-                    *b = updated;
-                    changed += 1;
-                    break;
-                }
-            }
-        }
-        drop(g);
-        if changed > 0 {
-            self.persist_benchmarks().await;
-        }
-        changed
+        self.turns.replace(updated).await
     }
 
     // ---------- session meta (custom name + category) ----------
@@ -512,31 +456,34 @@ impl Store {
     pub fn spawn_backfill(&self) {
         let store = self.clone();
         tokio::spawn(async move {
-            let todo: Vec<Benchmark> =
-                store.benchmarks().await.into_iter().filter(crate::freetier::needs_stamp).collect();
+            // One record at a time: the backfill never holds more than a
+            // single turn in memory, however large the history is.
+            let todo = store.turns.unstamped_ids().await;
             if todo.is_empty() {
                 return;
             }
             let n = todo.len();
             tracing::info!("regime backfill: classifying {n} record(s)");
-            let res = tokio::task::spawn_blocking(move || {
-                let mut out = Vec::new();
-                for mut b in todo {
-                    if crate::freetier::stamp_record(&mut b, true) {
-                        out.push(b);
+            let mut k = 0usize;
+            for id in todo {
+                let Some(b) = store.turns.get(&id).await else { continue };
+                let res = tokio::task::spawn_blocking(move || {
+                    let mut b = b;
+                    let changed = crate::freetier::stamp_record(&mut b, true);
+                    (b, changed)
+                })
+                .await;
+                match res {
+                    Ok((b, true)) => {
+                        if store.turns.replace(b).await {
+                            k += 1;
+                        }
                     }
+                    Ok((_, false)) => {}
+                    Err(e) => tracing::warn!("regime backfill failed: {e}"),
                 }
-                out
-            })
-            .await;
-            match res {
-                Ok(list) => {
-                    let k = list.len();
-                    store.update_benchmarks(list).await;
-                    tracing::info!("regime backfill stamped {k}/{n} record(s)");
-                }
-                Err(e) => tracing::warn!("regime backfill failed: {e}"),
             }
+            tracing::info!("regime backfill stamped {k}/{n} record(s)");
         });
     }
 }
@@ -558,7 +505,11 @@ where
 }
 
 async fn write_json(path: &std::path::Path, v: &impl serde::Serialize) -> std::io::Result<()> {
+    // Temp file + rename: a crash mid-write never truncates the real file
+    // (a truncated file would load as empty and the next save would erase it).
     let bytes = serde_json::to_vec_pretty(v).map_err(std::io::Error::other)?;
-    tokio::fs::write(path, bytes).await?;
-    Ok(())
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || crate::turn_store::write_atomic(&path, &bytes))
+        .await
+        .map_err(std::io::Error::other)?
 }

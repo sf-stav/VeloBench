@@ -583,14 +583,7 @@ async fn run_analysis(st: &AppState, session: &str) -> Result<(), String> {
     let (_, _, helper_model) = classify::resolve_helper(&settings)
         .map_err(|e| format!("helper not configured: {e}"))?;
 
-    let mut records: Vec<Benchmark> = st
-        .store
-        .benchmarks()
-        .await
-        .into_iter()
-        .filter(|b| b.session == session)
-        .collect();
-    records.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    let records: Vec<Benchmark> = st.store.session_turns(session).await;
     if records.is_empty() {
         return Err("no turns recorded for this session".into());
     }
@@ -1067,14 +1060,7 @@ fn dominant_regime(records: &[Benchmark]) -> Option<String> {
 /// report, with `status: "free"` and the dominant stamped regime as category.
 pub async fn session_detail(st: &AppState, session: &str) -> Option<serde_json::Value> {
     let a = st.store.analysis(session).await;
-    let mut records: Vec<Benchmark> = st
-        .store
-        .benchmarks()
-        .await
-        .into_iter()
-        .filter(|b| b.session == session)
-        .collect();
-    records.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    let records: Vec<Benchmark> = st.store.session_turns(session).await;
 
     let turns: Vec<serde_json::Value> = records
         .iter()

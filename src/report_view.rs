@@ -568,6 +568,26 @@ pub fn build_view(detail: &Value, p: &ViewParams, meta: &ViewMeta) -> Value {
         .map(|t| jf(t, "completionTokens").unwrap_or(0.0))
         .filter(|v| *v > 0.0)
         .collect();
+    // Prefill throughput by prompt size: one row per request that recorded
+    // both prompt tokens and TTFT — size, TTFT, prompt tokens ÷ TTFT.
+    let prefill_by_size: Vec<Value> = turns
+        .iter()
+        .filter(|t| section_match(t, filter))
+        .filter_map(|t| {
+            let pt = jf(t, "promptTokens")?;
+            let tt = jf(t, "ttftMs")?;
+            if pt <= 0.0 || tt <= 0.0 {
+                return None;
+            }
+            Some(json!({
+                "index": t.get("index").cloned().unwrap_or(Value::Null),
+                "label": t.get("label").cloned().unwrap_or(Value::Null),
+                "size": pt,
+                "ttft": tt,
+                "rate": pt / (tt / 1000.0),
+            }))
+        })
+        .collect();
     let turn_bounds = {
         let mut out = Vec::new();
         let mut offset = 0.0;
@@ -632,6 +652,7 @@ pub fn build_view(detail: &Value, p: &ViewParams, meta: &ViewMeta) -> Value {
         "conc": conc,
         "turnTtft": turn_ttft,
         "turnTokens": turn_tokens,
+        "prefillBySize": prefill_by_size,
         "turnBounds": turn_bounds,
         "sectionMode": section_mode,
         "sectionNames": section_names,

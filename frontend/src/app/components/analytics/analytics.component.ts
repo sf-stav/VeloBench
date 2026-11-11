@@ -39,6 +39,15 @@ interface Span {
 /** Level-1 scope selector: which recorded bin the charts show. */
 type Scope = 'all' | 'reasoning' | 'output';
 
+/** One request's prefill throughput, keyed by prompt size. */
+interface PrefillRow {
+  index: number | null;
+  label: string | null;
+  size: number;
+  ttft: number;
+  rate: number;
+}
+
 @Component({
   selector: 'app-analytics',
   imports: [],
@@ -333,6 +342,10 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
   readonly sectionMix = computed<any[]>(() => this.pick('sectionMix') ?? []);
   readonly turnTtft = computed<number[]>(() => this.pick('turnTtft') ?? []);
   readonly turnTokens = computed<number[]>(() => this.pick('turnTokens') ?? []);
+  readonly prefillBySize = computed<PrefillRow[]>(() => this.pick('prefillBySize') ?? []);
+  /** Same rows, ordered small → large so the chart and table read alike. */
+  readonly prefillBySizeSorted = computed<PrefillRow[]>(() =>
+    [...this.prefillBySize()].sort((a, b) => a.size - b.size));
   readonly turnBounds = computed<number[]>(() => this.pick('turnBounds') ?? []);
   readonly veloStrip = computed<any>(() => this.pick('veloStrip'));
   readonly headline = computed<any>(() => this.pick('headline'));
@@ -540,6 +553,19 @@ export class AnalyticsComponent implements OnInit, OnDestroy {
         color: '#4C86FF',
         fmt: (v) => v.toFixed(0),
         emptyLabel: 'no token records',
+      });
+    }
+
+    // Prefill throughput ordered by prompt size (small → large). The rate is
+    // prompt tokens ÷ TTFT, so it is the prefill speed actually achieved for
+    // that payload, not a decode figure.
+    const prefillCanvas = q('#cvPrefill');
+    if (prefillCanvas) {
+      const rows = [...(view.prefillBySize ?? [])].sort((a: PrefillRow, b: PrefillRow) => a.size - b.size);
+      this.charts.drawBars(prefillCanvas, rows.map((r) => r.rate), {
+        color: '#7FBF6A',
+        fmt: (v) => `${v.toFixed(0)} tok/s`,
+        emptyLabel: 'no prompt-size records',
       });
     }
 

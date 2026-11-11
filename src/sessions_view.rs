@@ -24,17 +24,89 @@ fn truncate(s: &str) -> String {
     }
 }
 
-fn tokens_of(b: &Benchmark) -> f64 {
-    let c = b.stats.completion_tokens.unwrap_or(0);
-    if c != 0 {
-        c as f64
-    } else {
-        b.stats.token_events.len() as f64
+/// Everything the Sessions list needs from one turn, small enough to keep in
+/// memory for every saved turn (the full record — prompt, output and every
+/// token event — stays on disk). `seq` is the insertion order.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TurnSummary {
+    pub id: String,
+    pub session: String,
+    pub seq: u64,
+    pub created_at: String,
+    pub kind: String,
+    pub label: String,
+    pub provider: String,
+    pub model: String,
+    #[serde(default)]
+    pub ttft_ms: Option<f64>,
+    #[serde(default)]
+    pub completion_tokens: Option<u64>,
+    pub decode_ms: f64,
+    pub n_events: usize,
+    /// Texts pre-cut to the 240 characters the expanded row shows.
+    pub prompt: String,
+    pub output: String,
+    pub reasoning: String,
+    /// Regime -> estimated tokens, in first-seen order.
+    #[serde(default)]
+    pub regimes: Vec<(String, f64)>,
+    /// Some token events still lack a regime label (boot backfill target).
+    #[serde(default)]
+    pub unstamped: bool,
+}
+
+impl TurnSummary {
+    pub fn from_benchmark(b: &Benchmark, seq: u64) -> Self {
+        let mut regimes: Vec<(String, f64)> = Vec::new();
+        for ev in &b.stats.token_events {
+            let Some(r) = ev.regime.as_ref().filter(|r| !r.is_empty()) else { continue };
+            match regimes.iter_mut().find(|(k, _)| k == r) {
+                Some(slot) => slot.1 += ev.est_tokens,
+                None => regimes.push((r.clone(), ev.est_tokens)),
+            }
+        }
+        Self {
+            id: b.id.clone(),
+            session: b.session.clone(),
+            seq,
+            created_at: b.created_at.clone(),
+            kind: b.kind.clone(),
+            label: b.label.clone(),
+            provider: b.provider.clone(),
+            model: b.model.clone(),
+            ttft_ms: b.stats.ttft_ms,
+            completion_tokens: b.stats.completion_tokens,
+            decode_ms: b.stats.decode_ms,
+            n_events: b.stats.token_events.len(),
+            prompt: truncate(&b.prompt),
+            output: truncate(&b.output),
+            reasoning: truncate(&b.reasoning),
+            regimes,
+            unstamped: crate::freetier::needs_stamp(b),
+        }
+    }
+
+    fn tokens(&self) -> f64 {
+        let c = self.completion_tokens.unwrap_or(0);
+        if c != 0 {
+            c as f64
+        } else {
+            self.n_events as f64
+        }
     }
 }
 
-/// Collapse per-turn records into one row per session id, newest first.
+/// Collapse full records into one row per session id, newest first.
+#[cfg(test)]
 pub fn build(records: &[Benchmark]) -> Value {
+    let sums: Vec<TurnSummary> =
+        records.iter().enumerate().map(|(i, b)| TurnSummary::from_benchmark(b, i as u64)).collect();
+    build_rows(&sums)
+}
+
+/// Collapse per-turn summaries (in insertion order) into one row per session
+/// id, newest first.
+pub fn build_rows(records: &[TurnSummary]) -> Value {
     struct G<'a> {
         session: String,
         created_at: String,
@@ -44,7 +116,7 @@ pub fn build(records: &[Benchmark]) -> Value {
         kind: String,
         label: String,
         total_tokens: f64,
-        turns: Vec<&'a Benchmark>,
+        turns: Vec<&'a TurnSummary>,
     }
     let mut order: Vec<String> = Vec::new();
     let mut by: BTreeMap<String, G> = BTreeMap::new();
@@ -81,7 +153,7 @@ pub fn build(records: &[Benchmark]) -> Value {
         if b.created_at > g.newest_at {
             g.newest_at = b.created_at.clone();
         }
-        g.total_tokens += tokens_of(b);
+        g.total_tokens += b.tokens();
     }
     let mut groups: Vec<G> = order.into_iter().filter_map(|k| by.remove(&k)).collect();
     for g in groups.iter_mut() {
@@ -98,8 +170,8 @@ pub fn build(records: &[Benchmark]) -> Value {
                 // inter-token interval)
                 let (mut toks, mut secs) = (0.0, 0.0);
                 for t in &g.turns {
-                    let c = t.stats.completion_tokens.unwrap_or(0) as f64;
-                    let d = t.stats.decode_ms;
+                    let c = t.completion_tokens.unwrap_or(0) as f64;
+                    let d = t.decode_ms;
                     if c >= 2.0 && d > 0.0 {
                         toks += c;
                         secs += d / 1000.0;
@@ -111,13 +183,12 @@ pub fn build(records: &[Benchmark]) -> Value {
                 let mut totals: BTreeMap<String, f64> = BTreeMap::new();
                 let mut total = 0.0;
                 for t in &g.turns {
-                    for ev in &t.stats.token_events {
-                        let Some(r) = ev.regime.as_ref().filter(|r| !r.is_empty()) else { continue };
+                    for (r, est) in &t.regimes {
                         if !totals.contains_key(r) {
                             order.push(r.clone());
                         }
-                        *totals.entry(r.clone()).or_insert(0.0) += ev.est_tokens;
-                        total += ev.est_tokens;
+                        *totals.entry(r.clone()).or_insert(0.0) += est;
+                        total += est;
                     }
                 }
                 let mut strip: Vec<(String, f64)> = if total > 0.0 {
@@ -147,11 +218,11 @@ pub fn build(records: &[Benchmark]) -> Value {
                         "created_at": t.created_at,
                         "provider": t.provider,
                         "model": t.model,
-                        "ttft_ms": t.stats.ttft_ms,
-                        "tokens": tokens_of(t),
-                        "prompt": truncate(&t.prompt),
-                        "output": truncate(&t.output),
-                        "reasoning": truncate(&t.reasoning),
+                        "ttft_ms": t.ttft_ms,
+                        "tokens": t.tokens(),
+                        "prompt": t.prompt,
+                        "output": t.output,
+                        "reasoning": t.reasoning,
                     })).collect::<Vec<_>>(),
                 })
             })

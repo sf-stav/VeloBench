@@ -682,9 +682,15 @@ export class ChatSessionService {
       if ((isBench || isImage || isPrompt) && (step.tg || 0) > 0)
         overrides.push({ key: 'max_tokens', value: String(step.tg) });
       // Per-step reasoning override ('' inherit, 'off', or an effort level).
+      // The model's "Reasoning Enabled" checkbox is the master switch: a step
+      // can ask for an effort, but it cannot turn reasoning ON for a model
+      // that has it disabled.
       const stepReasoning = (step.reasoningEffort || '').trim();
       const reasoning = stepReasoning
-        ? { enabled: stepReasoning !== 'off', effort: stepReasoning === 'off' ? '' : stepReasoning }
+        ? {
+            enabled: mc.reasoning_enabled && stepReasoning !== 'off',
+            effort: mc.reasoning_enabled && stepReasoning !== 'off' ? stepReasoning : '',
+          }
         : undefined;
       const resetStats = this.pendingStatsReset;
       this.pendingStatsReset = false;

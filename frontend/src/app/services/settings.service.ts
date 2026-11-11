@@ -59,8 +59,8 @@ export class SettingsService {
   });
 
   /** Transient, non-persisted override of the active config (topbar selection).
-   *  Clever: the persisted `default_config` stays untouched, so "New Chat" can
-   *  drop the override and snap back to the default model+provider. */
+   *  The persisted `default_config` stays untouched; "New Chat" keeps whatever
+   *  model+provider is currently selected. */
   readonly sessionConfig = signal<{ provider_id: string; model_id: string } | null>(null);
 
   /** The config in effect right now: the session override, else the default. */
@@ -143,7 +143,7 @@ export class SettingsService {
   }
 
   /** Override the active config for this session only (topbar). The persisted
-   *  default is left alone so New Chat can revert to it. */
+   *  default is left alone so the Settings "Default model" is unaffected. */
   setSessionConfig(providerId: string, modelId: string): void {
     this.sessionConfig.set({ provider_id: providerId, model_id: modelId });
   }

@@ -71,6 +71,11 @@ pub struct ChatPayload {
     pub stream_options: Option<StreamOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
+    /// Explicit thinking on/off for engines that distinguish the two. Sent as
+    /// `thinking: false` when reasoning is disabled so a provider that defaults
+    /// to thinking cannot sneak one in; omitted when reasoning is enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f64>,
     #[serde(flatten)]

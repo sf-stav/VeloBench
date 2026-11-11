@@ -103,6 +103,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/concurrent", get(list_concurrent).post(start_concurrent))
         .route("/api/concurrent/{id}", get(get_concurrent))
         .route("/api/concurrent/{id}/stop", post(stop_concurrent))
+        .route("/api/run", post(run_api_handler))
         .route("/api/cancel/{request_id}", post(cancel_request))
         .route("/api/test-images", get(test_images))
         .route("/api/comparisons", get(list_comparisons).post(add_comparison))
@@ -143,11 +144,11 @@ async fn get_session(State(st): State<AppState>) -> Json<serde_json::Value> {
         Ok(engine) => engine.session_id().to_string(),
         Err(_) => st.active_session.lock().unwrap().clone(),
     };
-    let mut all = st.store.benchmarks().await;
-    all.sort_by(|a, b| a.created_at.cmp(&b.created_at));
-    let turns: Vec<serde_json::Value> = all
+    let turns: Vec<serde_json::Value> = st
+        .store
+        .session_turns(&session_id)
+        .await
         .into_iter()
-        .filter(|b| b.session == session_id)
         .map(|b| serde_json::json!({
             "id": b.id,
             "prompt": b.prompt,
@@ -189,7 +190,7 @@ async fn get_session(State(st): State<AppState>) -> Json<serde_json::Value> {
 /// Start a NEW session (New Chat / model change). This is not a delete: the
 /// engine's in-memory live-stats aggregation is cleared and the session id is
 /// rotated, so the conversation detaches from the old turns. Those turns stay
-/// saved in benchmarks.json under their own session ids.
+/// saved in the turn database under their own session ids.
 async fn new_session(State(st): State<AppState>) -> Json<serde_json::Value> {
     let mut engine = st.stats.lock().await;
     engine.reset_session();
@@ -344,7 +345,7 @@ async fn telemetry_ws_run(
 ) {
     use futures::{SinkExt, StreamExt};
     let (mut tx, mut rx) = socket.split();
-    let mut cursors: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut cursors = crate::telemetry::Cursors::new();
     let mut interval = tokio::time::interval(std::time::Duration::from_millis(120));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
@@ -566,11 +567,40 @@ async fn classify_handler(
 /// regime strip, newest turn) — everything the list views used to compute
 /// from the full benchmark payload in the browser.
 async fn list_sessions(State(st): State<AppState>) -> Json<serde_json::Value> {
-    Json(crate::sessions_view::build(&st.store.benchmarks().await))
+    Json(crate::sessions_view::build_rows(&st.store.turn_summaries().await))
 }
 
-async fn list_benchmarks(State(st): State<AppState>) -> Json<Vec<crate::benchmarks::Benchmark>> {
-    Json(st.store.benchmarks().await)
+/// Every full record as one JSON array, streamed from the database in small
+/// pages so the export never materialises the whole history in memory.
+async fn list_benchmarks(State(st): State<AppState>) -> Response {
+    let store = st.store.turn_store().clone();
+    let stream = async_stream::stream! {
+        yield Ok::<_, std::io::Error>(axum::body::Bytes::from_static(b"["));
+        let mut after = 0i64;
+        let mut first = true;
+        loop {
+            let page = store.raw_records_after(after, 32).await;
+            if page.is_empty() {
+                break;
+            }
+            for (seq, json) in page {
+                after = seq;
+                let mut chunk = Vec::with_capacity(json.len() + 1);
+                if !first {
+                    chunk.push(b',');
+                }
+                first = false;
+                chunk.extend_from_slice(json.as_bytes());
+                yield Ok(axum::body::Bytes::from(chunk));
+            }
+        }
+        yield Ok(axum::body::Bytes::from_static(b"]"));
+    };
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        axum::body::Body::from_stream(stream),
+    )
+        .into_response()
 }
 
 async fn get_benchmark(
@@ -1066,6 +1096,17 @@ async fn start_concurrent(
     }
 }
 
+/// Headless test run: run a test against a provider's first model and return a
+/// structured report (no UI). Synchronous — blocks until the run finishes.
+async fn run_api_handler(
+    State(st): State<AppState>,
+    body: axum::body::Bytes,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let req: crate::run_api::RunRequest = serde_json::from_slice(&body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("bad request body: {e}")))?;
+    crate::run_api::handle(st, req).await
+}
+
 /// Image files available to Image test steps (assets/test_images), listed
 /// with their byte sizes — the editor's dropdown selects by size.
 async fn test_images() -> Json<Value> {
@@ -1144,6 +1185,7 @@ async fn check_model(
         stream: false,
         stream_options: None,
         reasoning_effort: None,
+        thinking: None,
         temperature: Some(0.0),
         extra: serde_json::json!({ "max_tokens": 8 })
             .as_object()

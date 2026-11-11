@@ -92,7 +92,7 @@ pub fn build_payload(
 ) -> ChatPayload {
     // Find this model's config in the provider (uid-aware).
     let mcfg = find_model_cfg(provider, model, req.model_uid.as_deref());
-    let (_, reasoning_effort) = effective_reasoning(provider, model, req);
+    let (reasoning_enabled, reasoning_effort) = effective_reasoning(provider, model, req);
 
     let mut extra = serde_json::Map::new();
     // Start with the configured per-model params. Numeric-looking strings for
@@ -120,6 +120,12 @@ pub fn build_payload(
     if temperature.is_some() {
         extra.remove("temperature");
     }
+    // Same for `thinking`: when reasoning is off we emit the field explicitly,
+    // so a hand-written "thinking" param (in case someone worked around this
+    // before) must not duplicate the key.
+    if !reasoning_enabled {
+        extra.remove("thinking");
+    }
 
     tracing::debug!(model = %model, uid = ?req.model_uid, params = ?extra, "effective payload params");
     let stream = desired_stream && !req.no_stream;
@@ -134,6 +140,10 @@ pub fn build_payload(
         stream_options,
         // Already gated on `reasoning_enabled` by effective_reasoning.
         reasoning_effort,
+        // Explicitly opt out of thinking when reasoning is disabled; a provider
+        // that defaults to thinking must not be allowed to think anyway. When
+        // reasoning is enabled the field is omitted (the effort governs it).
+        thinking: if reasoning_enabled { None } else { Some(false) },
         temperature,
         extra,
     }
@@ -351,5 +361,48 @@ mod tests {
         let count = json.matches(r#""temperature""#).count();
         assert_eq!(count, 1, "exactly one temperature key: {json}");
         assert!(json.contains("0.7"), "request value wins: {json}");
+    }
+
+    /// Reasoning disabled must emit `thinking: false` and NEVER send
+    /// `reasoning_effort` — even when the stored model config has one.
+    #[test]
+    fn disabled_reasoning_sends_thinking_false_and_no_effort() {
+        let mut p = provider_with_temp_param();
+        p.models[0].reasoning_effort = Some("high".into());
+        let req = StreamRequest {
+            model_uid: Some("u".into()),
+            provider_id: "p".into(),
+            model: "m".into(),
+            messages: vec![ChatMessage { role: "user".into(), content: Value::String("hi".into()), name: None }],
+            reasoning_enabled: Some(false),
+            reasoning_effort: Some("high".into()),
+            overrides: vec![],
+            temperature: None,
+            no_stream: false,
+        };
+        let json = serde_json::to_string(&build_payload(&p, "m", &req, false)).unwrap();
+        assert!(json.contains(r#""thinking":false"#), "thinking must be explicit: {json}");
+        assert!(!json.contains("reasoning_effort"), "effort must not be sent: {json}");
+    }
+
+    /// Reasoning enabled keeps the effort and omits the `thinking` field.
+    #[test]
+    fn enabled_reasoning_sends_effort_and_no_thinking() {
+        let mut p = provider_with_temp_param();
+        p.models[0].reasoning_effort = Some("high".into());
+        let req = StreamRequest {
+            model_uid: Some("u".into()),
+            provider_id: "p".into(),
+            model: "m".into(),
+            messages: vec![ChatMessage { role: "user".into(), content: Value::String("hi".into()), name: None }],
+            reasoning_enabled: Some(true),
+            reasoning_effort: None,
+            overrides: vec![],
+            temperature: None,
+            no_stream: false,
+        };
+        let json = serde_json::to_string(&build_payload(&p, "m", &req, false)).unwrap();
+        assert!(!json.contains("thinking"), "no thinking field when enabled: {json}");
+        assert!(json.contains(r#""reasoning_effort":"high""#), "effort preserved: {json}");
     }
 }
