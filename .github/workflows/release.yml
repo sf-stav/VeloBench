@@ -11,6 +11,13 @@
 # macOS users get install.sh's source-build fallback (it has always been that
 # way — no release ever shipped a macos-x86_64 tarball). If an Intel runner
 # label comes back, add the leg and the fourth artifact name with it.
+#
+# macOS arm64 runs on macos-15. Do NOT move it back to macos-14: GitHub
+# retired the macOS 14 images from Actions on 2026-11-02, and macos-14 now
+# resolves to an x64 image only. A macos-14 job therefore never gets an arm64
+# runner, gets cancelled, and — because the release job `needs: build` —
+# silently blocks the whole release (that is what left v0.4.0 tagged but
+# unpublished). macos-15 is the current arm64 image.
 
 name: release
 
@@ -32,7 +39,7 @@ jobs:
         include:
           - { name: linux-x86_64, runs-on: ubuntu-latest,   node-arch: x64 }
           - { name: linux-arm64,  runs-on: ubuntu-24.04-arm, node-arch: arm64 }
-          - { name: macos-arm64,  runs-on: macos-14,        node-arch: arm64 }
+          - { name: macos-arm64,  runs-on: macos-15,        node-arch: arm64 }
     steps:
       - uses: actions/checkout@v4
 

@@ -18,6 +18,14 @@ release. No VeloBenchmark release has ever shipped a `macos-x86_64` tarball
 back to a source build there. Re-add the leg only if an Intel macOS runner
 label exists again.
 
+**macOS arm64 runs on `macos-15`, never `macos-14`.** GitHub retired the
+macOS 14 images from Actions on 2026-11-02 and `macos-14` now resolves to an
+x64 image only. A `macos-14` job never gets an arm64 runner, ends up
+cancelled, and — because the `release` job `needs: build` — silently blocks
+the entire release: that is exactly how v0.4.0 ended up tagged but never
+published. If a macOS build job is cancelled with no runner, fix the label
+before re-tagging.
+
 ## The contract (do not deviate)
 
 `install.sh` in the repo root downloads, per platform:
@@ -43,7 +51,7 @@ https://github.com/sf-stav/VeloBench/releases/latest/download/velobenchmark-<os>
 ### Option A — CI (preferred)
 
 The repo contains `.github/workflows/release.yml`. It triggers on a `v*` tag,
-builds on three runners (`ubuntu-latest`, `ubuntu-24.04-arm`, `macos-14`),
+builds on three runners (`ubuntu-latest`, `ubuntu-24.04-arm`, `macos-15`),
 packages each platform, and attaches everything to a release with generated
 notes.
 
