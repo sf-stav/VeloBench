@@ -15,6 +15,13 @@ path = "src/main.rs"
 [[bin]]
 name = "parity"
 path = "src/bin/parity.rs"
+required-features = ["parity-harness"]
+
+[features]
+# Dev-only classifier parity harness (src/bin/). The source is not synced to the
+# public repo, so this bin is gated off by default: without the feature cargo
+# never builds the target and a missing source file is not an error.
+parity-harness = []
 
 [dependencies]
 axum = { version = "0.8", features = ["ws"] }
@@ -27,7 +34,12 @@ include_dir = "0.7"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "gzip", "brotli", "http2", "rustls-tls"] }
 tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
+# `default-features = false` drops the `clock` feature, which pulls in
+# iana-time-zone -> core-foundation-sys. We only use `Utc::now()` (backed by
+# SystemTime, no tz database) and never `chrono::Local`, so the dependency is
+# dead weight — and its `-framework CoreFoundation` link requirement blocks
+# cross-compiling to macOS from Linux.
+chrono = { version = "0.4", default-features = false, features = ["std", "serde", "now"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures = "0.3"
