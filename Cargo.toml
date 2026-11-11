@@ -11,7 +11,11 @@ path = "src/main.rs"
 
 # Offline harness: classifies a JSON dump of section texts with the free-tier
 # classifier so scripts can diff Rust labels against the Python validator.
-# Usage: cargo run --release --bin parity -- dump.json > labels.json
+# Usage: cargo run --release --features parity-harness --bin parity -- dump.json > labels.json
+#
+# Gated behind `parity-harness` because src/bin/ is not synced to the public
+# repo. Without the gate, a plain `cargo build` / `cargo test` there fails with
+# "couldn't read `src/bin/parity.rs`" — cargo compiles every declared bin.
 [[bin]]
 name = "parity"
 path = "src/bin/parity.rs"
@@ -35,10 +39,11 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 # `default-features = false` drops the `clock` feature, which pulls in
-# iana-time-zone -> core-foundation-sys. We only use `Utc::now()` (backed by
-# SystemTime, no tz database) and never `chrono::Local`, so the dependency is
-# dead weight — and its `-framework CoreFoundation` link requirement blocks
-# cross-compiling to macOS from Linux.
+# iana-time-zone -> core-foundation-sys. We only need the `now` feature
+# (`now = ["std"]`), which backs `Utc::now()` with SystemTime — no timezone
+# database, and we never use `chrono::Local`. Keeping `clock` costs a
+# `-framework CoreFoundation` link requirement, which blocks cross-compiling
+# to macOS from Linux.
 chrono = { version = "0.4", default-features = false, features = ["std", "serde", "now"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
