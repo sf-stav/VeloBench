@@ -25,6 +25,7 @@ generic language where they aren't individually notable.
 - **Headless run API.** `POST /api/run` runs a plan without the chat UI, accepting provider,
   model, steps, temperature and per-param overrides. See `docs/run-api.md`.
 - **Fixed: telemetry streams no longer panic or desync on long multibyte output.**
+  (Fix contributed by Sean Lin.)
 - **Fixed: a model's "Reasoning Enabled = off" is honoured as a master switch**, and
   `thinking: false` is sent when reasoning is disabled.
 - **Fixed: New Chat keeps the selected model.**
