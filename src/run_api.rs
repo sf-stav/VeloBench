@@ -210,6 +210,7 @@ async fn run_single(
                     },
                     images: Vec::new(),
                     fill_tokens: *fill_tokens,
+                    prompt: if *fill_tokens > 0 { prompt.clone() } else { String::new() },
                 };
                 let msgs = if *stateless {
                     vec![step_msg.clone()]
@@ -225,7 +226,7 @@ async fn run_single(
                     Ok((out, _category)) => {
                         if !*stateless {
                             history.push(step_msg);
-                            history.push(ChatMessage { role: "assistant".into(), content: out, images: Vec::new(), fill_tokens: 0 });
+                            history.push(ChatMessage { role: "assistant".into(), content: out, images: Vec::new(), fill_tokens: 0, prompt: String::new() });
                         }
                     }
                     Err(e) => {
@@ -248,6 +249,7 @@ async fn run_single(
                     content: prompt.clone(),
                     images: vec![data_url],
                     fill_tokens: 0,
+                    prompt: String::new(),
                 };
                 let mut msgs = history.clone();
                 msgs.push(step_msg.clone());
@@ -255,7 +257,7 @@ async fn run_single(
                 match execute_turn(st, provider, model_cfg, handle.clone(), request, &session).await {
                     Ok((out, _category)) => {
                         history.push(step_msg);
-                        history.push(ChatMessage { role: "assistant".into(), content: out, images: Vec::new(), fill_tokens: 0 });
+                        history.push(ChatMessage { role: "assistant".into(), content: out, images: Vec::new(), fill_tokens: 0, prompt: String::new() });
                     }
                     Err(e) => {
                         error = Some(format!("step '{title}': {e}"));
@@ -361,6 +363,10 @@ async fn execute_turn(
             None => None,
         };
         msg.content = text.unwrap_or_else(|| crate::corpus::fallback_fill(n));
+        if !msg.prompt.is_empty() {
+            msg.content.push_str("\r\n");
+            msg.content.push_str(&msg.prompt);
+        }
     }
 
     let stream_req = crate::ws::to_stream_request(&request);

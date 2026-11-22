@@ -36,6 +36,7 @@ export interface Msg {
   reasoningTokens?: number; // reasoning token count for the collapsed summary
   fill?: boolean; // context-fill prefill test message (placeholder content)
   fillTokens?: number; // real payload size in tokens (the placeholder hides it)
+  prompt?: string; // extra prompt appended after a context fill ("\r\n" + prompt)
 }
 
 export const MAX_ATTACH = 4;
@@ -346,6 +347,7 @@ export class ChatSessionService {
         content: String(m.content ?? ''),
         images: m.images ?? [],
         fillTokens: m.fillTokens ?? 0,
+        prompt: m.prompt ?? '',
       })),
       reasoningEnabled: opts?.reasoning ? opts.reasoning.enabled : !!mc.reasoning_enabled,
       reasoningEffort: opts?.reasoning
@@ -694,6 +696,7 @@ export class ChatSessionService {
           images: isImage ? [imageDataUrl] : undefined,
           fill: isFill || isBench,
           fillTokens: isBench ? benchTokens : isFill ? (step.k || 1) * 1024 : undefined,
+          prompt: isFill ? (step.prompt || undefined) : undefined,
         },
       ]);
       // Context-fill messages carry a display placeholder plus their nominal
@@ -708,11 +711,12 @@ export class ChatSessionService {
         content: String(m.content ?? ''),
         images: m.images ?? [],
         fillTokens: m.fill ? m.fillTokens : undefined,
+        prompt: m.prompt,
       }));
       const overrides: { key: string; value: string }[] = [];
       if (st.test.temperature != null) overrides.push({ key: 'temperature', value: String(st.test.temperature) });
       if (st.test.maxTokens != null) overrides.push({ key: 'max_tokens', value: String(st.test.maxTokens) });
-      if ((isBench || isImage || isPrompt) && (step.tg || 0) > 0)
+      if ((isBench || isImage || isPrompt || isFill) && (step.tg || 0) > 0)
         overrides.push({ key: 'max_tokens', value: String(step.tg) });
       // Per-step reasoning override ('' inherit, 'off', or an effort level).
       // The model's "Reasoning Enabled" checkbox is the master switch: a step

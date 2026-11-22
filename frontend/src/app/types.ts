@@ -100,6 +100,8 @@ export interface ChatMessage {
   /** Context-fill marker: nominal payload size in tokens. The server replaces
    *  the content with an exact corpus slice of this size before sending. */
   fillTokens?: number;
+  /** Optional prompt appended after a context fill ("\r\n" + prompt). */
+  prompt?: string;
 }
 
 export interface StreamRequest {
@@ -384,7 +386,8 @@ export interface TestStep {
   reset?: boolean;
   /** Image steps: file inside assets/test_images (selected by size). */
   image?: string;
-  /** Image steps: prompt sent with the image. */
+  /** Image steps: prompt sent with the image. Context steps: prompt appended
+   *  to the end of the fill payload ("\r\n" + prompt). */
   prompt?: string;
   /** Result assertion (review M1): a substring the visible output must
    *  contain. Empty = no assertion. */

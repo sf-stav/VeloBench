@@ -82,6 +82,7 @@ async fn ws_accepts_multi_megabyte_frame() {
             content: "x".repeat(21 * 1024 * 1024),
             images: Vec::new(),
             fill_tokens: 0,
+            prompt: String::new(),
         }],
         reasoning_enabled: false,
         reasoning_effort: String::new(),

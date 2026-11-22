@@ -3,6 +3,18 @@
 High-level release notes for VeloBenchmark. Minor bug fixes and small optimizations are grouped under
 generic language where they aren't individually notable.
 
+## v0.4.2 — context-fill steps can ask a question
+
+- **Context-fill steps take an appended prompt.** A fill step previously produced pure
+  continuation of the filler; it can now carry an optional prompt appended to the end of
+  the fill payload (`"\r\n"` + prompt) so the model answers a real question at full
+  context. Empty = fill-only, unchanged.
+- **Per-step output-token cap in the tests UI.** Steps that generate after a fill
+  (bench / image / prompt / fill) get their own `max_tokens` override instead of
+  inheriting the test-level cap.
+- Wire format: `ChatMessage.prompt` (proto field 5); older sessions load unchanged
+  (field defaults to empty).
+
 ## v0.4.1 — vision payloads no longer fail silently
 
 - **Large vision chats now work.** A multi-turn conversation that includes images (sent as

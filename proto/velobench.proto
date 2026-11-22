@@ -56,6 +56,9 @@ message ChatMessage {
   // decoded with the model's tokenizer. Applies to history replays too, so
   // cumulative context tests stay exact.
   uint32 fill_tokens = 4;
+  // Optional prompt appended to the END of a context-fill payload ("\r\n" +
+  // prompt). Empty = fill only (unchanged behaviour).
+  string prompt = 5;
 }
 
 message ParamOverride {

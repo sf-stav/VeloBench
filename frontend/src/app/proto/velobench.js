@@ -750,6 +750,7 @@ export const velobench = $root.velobench = (() => {
          * @property {string|null} [content] ChatMessage content
          * @property {Array.<string>|null} [images] ChatMessage images
          * @property {number|null} [fillTokens] ChatMessage fillTokens
+         * @property {string|null} [prompt] ChatMessage prompt
          */
 
         /**
@@ -801,6 +802,14 @@ export const velobench = $root.velobench = (() => {
         ChatMessage.prototype.fillTokens = 0;
 
         /**
+         * ChatMessage prompt.
+         * @member {string} prompt
+         * @memberof velobench.ChatMessage
+         * @instance
+         */
+        ChatMessage.prototype.prompt = "";
+
+        /**
          * Creates a new ChatMessage instance using the specified properties.
          * @function create
          * @memberof velobench.ChatMessage
@@ -837,6 +846,8 @@ export const velobench = $root.velobench = (() => {
                     writer.uint32(/* id 3, wireType 2 =*/26).string(message.images[i]);
             if (message.fillTokens != null && Object.hasOwnProperty.call(message, "fillTokens"))
                 writer.uint32(/* id 4, wireType 0 =*/32).uint32(message.fillTokens);
+            if (message.prompt != null && Object.hasOwnProperty.call(message, "prompt"))
+                writer.uint32(/* id 5, wireType 2 =*/42).string(message.prompt);
             return writer;
         };
 
@@ -905,6 +916,10 @@ export const velobench = $root.velobench = (() => {
                         message.fillTokens = reader.uint32();
                         break;
                     }
+                case 5: {
+                        message.prompt = reader.string();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7, long);
                     break;
@@ -965,6 +980,9 @@ export const velobench = $root.velobench = (() => {
             if (message.fillTokens != null && Object.hasOwnProperty.call(message, "fillTokens"))
                 if (!$util.isInteger(message.fillTokens))
                     return "fillTokens: integer expected";
+            if (message.prompt != null && Object.hasOwnProperty.call(message, "prompt"))
+                if (!$util.isString(message.prompt))
+                    return "prompt: string expected";
             return null;
         };
 
@@ -999,6 +1017,8 @@ export const velobench = $root.velobench = (() => {
             }
             if (object.fillTokens != null)
                 message.fillTokens = object.fillTokens >>> 0;
+            if (object.prompt != null)
+                message.prompt = String(object.prompt);
             return message;
         };
 
@@ -1025,6 +1045,7 @@ export const velobench = $root.velobench = (() => {
                 object.role = "";
                 object.content = "";
                 object.fillTokens = 0;
+                object.prompt = "";
             }
             if (message.role != null && Object.hasOwnProperty.call(message, "role"))
                 object.role = message.role;
@@ -1037,6 +1058,8 @@ export const velobench = $root.velobench = (() => {
             }
             if (message.fillTokens != null && Object.hasOwnProperty.call(message, "fillTokens"))
                 object.fillTokens = message.fillTokens;
+            if (message.prompt != null && Object.hasOwnProperty.call(message, "prompt"))
+                object.prompt = message.prompt;
             return object;
         };
 

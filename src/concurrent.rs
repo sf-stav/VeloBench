@@ -346,7 +346,7 @@ pub(crate) fn plan_from_test(t: &crate::tests::TestDef) -> Vec<PlanStep> {
                 let title = step_title(&phase, total > 1, n, format!("fill {}K", s.k));
                 out.push(PlanStep::Req {
                     title,
-                    prompt: String::new(),
+                    prompt: s.prompt.clone(),
                     fill_tokens: s.k.saturating_mul(1024),
                     tg: eff_tg(s),
                     exact_tg: s.exact_tg,
@@ -639,6 +639,7 @@ async fn orchestrator(st: AppState, run_id: String, session: String) {
                     },
                     images: Vec::new(),
                     fill_tokens,
+                    prompt: if fill_tokens > 0 { prompt.clone() } else { String::new() },
                 };
                 let mut futs = Vec::with_capacity(workers);
                 for idx in 0..workers {
@@ -687,6 +688,7 @@ async fn orchestrator(st: AppState, run_id: String, session: String) {
                                 content: reply.clone(),
                                 images: Vec::new(),
                                 fill_tokens: 0,
+                                prompt: String::new(),
                             });
                         }
                     }
@@ -740,6 +742,7 @@ async fn orchestrator(st: AppState, run_id: String, session: String) {
                         content: prompt.clone(),
                         images: vec![data_url.clone()],
                         fill_tokens: 0,
+                        prompt: String::new(),
                     });
                     futs.push(run_step(
                         st.clone(),
@@ -775,6 +778,7 @@ async fn orchestrator(st: AppState, run_id: String, session: String) {
                     content: prompt.clone(),
                     images: vec![data_url.clone()],
                     fill_tokens: 0,
+                    prompt: String::new(),
                 };
                 for (idx, res) in results.iter().enumerate() {
                     if let Ok(reply) = res {
@@ -784,6 +788,7 @@ async fn orchestrator(st: AppState, run_id: String, session: String) {
                             content: reply.clone(),
                             images: Vec::new(),
                             fill_tokens: 0,
+                            prompt: String::new(),
                         });
                     }
                 }
@@ -974,6 +979,10 @@ async fn run_step(
             None => None,
         };
         msg.content = text.unwrap_or_else(|| crate::corpus::fallback_fill(n));
+        if !msg.prompt.is_empty() {
+            msg.content.push_str("\r\n");
+            msg.content.push_str(&msg.prompt);
+        }
     }
 
     let stream_req = crate::ws::to_stream_request(&request);

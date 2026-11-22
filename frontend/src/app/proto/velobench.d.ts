@@ -228,6 +228,9 @@ export namespace velobench {
 
         /** ChatMessage fillTokens */
         fillTokens?: (number|null);
+
+        /** ChatMessage prompt */
+        prompt?: (string|null);
     }
 
     /** Represents a ChatMessage. */
@@ -250,6 +253,9 @@ export namespace velobench {
 
         /** ChatMessage fillTokens. */
         public fillTokens: number;
+
+        /** ChatMessage prompt. */
+        public prompt: string;
 
         /**
          * Creates a new ChatMessage instance using the specified properties.

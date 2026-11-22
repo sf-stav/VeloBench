@@ -257,6 +257,10 @@ async fn run(mut socket: WebSocket, st: AppState) {
             None => None,
         };
         msg.content = text.unwrap_or_else(|| crate::corpus::fallback_fill(n));
+        if !msg.prompt.is_empty() {
+            msg.content.push_str("\r\n");
+            msg.content.push_str(&msg.prompt);
+        }
     }
 
     // Build the provider payload from the protobuf request.
@@ -1421,6 +1425,7 @@ mod tests {
                 content: "hi".into(),
                 images: vec![],
                 fill_tokens: 0,
+                prompt: String::new(),
             }],
             reasoning_enabled: true,
             reasoning_effort: "low".into(),

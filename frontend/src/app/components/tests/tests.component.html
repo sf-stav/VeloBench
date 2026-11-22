@@ -152,6 +152,10 @@
                     <option value="xhigh">xhigh</option>
                   </select>
                 </div>
+                <div class="secrow" title="Per-step output-token cap (max_tokens): overrides the test-level 'Max output tok'. Empty = inherit.">
+                  <span class="muted small">out tok</span>
+                  <input class="inp" type="number" min="1" [ngModel]="s.tg" (ngModelChange)="updateStep($index, { tg: toNum($event) })" [disabled]="readonly_()" placeholder="inherit" />
+                </div>
               } @else if (s.type === 'image') {
                 <div class="secrow">
                   <select class="inp" [ngModel]="s.image" (ngModelChange)="updateStep($index, { image: $event })" [disabled]="readonly_()">
@@ -172,6 +176,10 @@
                     <option value="high">high</option>
                     <option value="xhigh">xhigh</option>
                   </select>
+                </div>
+                <div class="secrow" title="Per-step output-token cap (max_tokens): overrides the test-level 'Max output tok'. Empty = inherit.">
+                  <span class="muted small">out tok</span>
+                  <input class="inp" type="number" min="1" [ngModel]="s.tg" (ngModelChange)="updateStep($index, { tg: toNum($event) })" [disabled]="readonly_()" placeholder="inherit" />
                 </div>
               } @else if (s.type === 'bench') {
                 <div class="ctxrow" title="Fixed-shape run: ONE request with depth corpus tokens + pp prompt tokens, generating tg tokens">
@@ -202,6 +210,9 @@
                   </select>
                   <span class="muted small">tokens (K = 1024)</span>
                 </div>
+                <div class="secrow" title="Optional prompt appended to the end of the fill payload ('\r\n' + prompt). Empty = fill only.">
+                  <textarea class="inp" rows="2" [ngModel]="s.prompt" (ngModelChange)="updateStep($index, { prompt: $event })" [disabled]="readonly_()" placeholder="optional prompt appended after the fill (empty = fill only)"></textarea>
+                </div>
                   <span class="muted small">reasoning</span>
                   <select class="inp" style="max-width: 140px" [ngModel]="s.reasoningEffort || ''" (ngModelChange)="updateStep($index, { reasoningEffort: $event })" [disabled]="readonly_()">
                     <option value="">inherit model config</option>
@@ -211,6 +222,10 @@
                     <option value="high">high</option>
                     <option value="xhigh">xhigh</option>
                   </select>
+                <div class="secrow" title="Per-step output-token cap (max_tokens): overrides the test-level 'Max output tok'. Empty = inherit.">
+                  <span class="muted small">out tok</span>
+                  <input class="inp" type="number" min="1" [ngModel]="s.tg" (ngModelChange)="updateStep($index, { tg: toNum($event) })" [disabled]="readonly_()" placeholder="inherit" />
+                </div>
               }
             </div>
           }

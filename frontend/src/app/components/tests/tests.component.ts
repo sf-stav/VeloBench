@@ -313,6 +313,8 @@ export class TestsComponent implements OnInit {
         }
         if (s.type === 'image') {
           base['image'] = s.image ?? '';
+        }
+        if (s.type === 'image' || s.type === 'context') {
           base['prompt'] = s.prompt ?? '';
         }
         if (s.tg) base['tg'] = s.tg;
