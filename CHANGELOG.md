@@ -3,6 +3,16 @@
 High-level release notes for VeloBenchmark. Minor bug fixes and small optimizations are grouped under
 generic language where they aren't individually notable.
 
+## v0.4.1 — vision payloads no longer fail silently
+
+- **Large vision chats now work.** A multi-turn conversation that includes images (sent as
+  base64 data-URLs) is one big JSON body — over Axum's 2 MiB default on HTTP and past the
+  16 MiB WebSocket frame cap, so the request was 413'd or silently dropped. Both transport
+  limits are raised to 256 MiB.
+- **A connection that dies mid-request is surfaced** instead of vanishing: the failing turn
+  reports its error, and the images that could not be sent are removed from the history so a
+  retry succeeds.
+
 ## v0.4.0 — SQLite session store, prefill-by-size reports, headless run API
 
 - **Saved sessions live in SQLite.** Every recorded turn used to sit in one `benchmarks.json`

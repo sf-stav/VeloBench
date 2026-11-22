@@ -110,6 +110,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/comparisons/{id}", delete(delete_comparison))
         .route("/api/comparisons/{id}/view", get(get_comparison_view))
         .fallback(static_service)
+        // Vision requests re-encode conversation history (base64 images) as one
+        // JSON body; Axum's 2 MiB default would 413 them. Match the WS limit.
+        .layer(axum::extract::DefaultBodyLimit::max(256 * 1024 * 1024))
         .with_state(state)
 }
 

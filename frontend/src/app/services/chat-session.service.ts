@@ -96,6 +96,8 @@ export class ChatSessionService {
   readonly stopping = signal(false);
   /** Set when the current turn ended by an acknowledged cancellation. */
   private turnCancelled = false;
+  /** True once the server sent a Done frame for the current turn. */
+  private sawDone = false;
 
   constructor(
     private api: ApiService,
@@ -168,6 +170,7 @@ export class ChatSessionService {
     this.streaming.set(true);
     this.turnFailed = '';
     this.turnCancelled = false;
+    this.sawDone = false;
     this.stopping.set(false);
     this.requestId = inflight.requestId;
     this.engine.beginTurn();
@@ -320,6 +323,7 @@ export class ChatSessionService {
     this.streaming.set(true);
     this.turnFailed = '';
     this.turnCancelled = false;
+    this.sawDone = false;
     this.stopping.set(false);
     // Unique id for THIS run: the target for an acknowledged Stop (the server
     // maps it to a cancel flag) and the reference on the recorded benchmark.
@@ -385,8 +389,17 @@ export class ChatSessionService {
     ws.onopen = () => {
       try {
         ws.send(bytes);
-      } catch {
-        /* ignore */
+      } catch (e) {
+        // A client-side send failure (e.g. socket not ready) must not leave
+        // the UI stuck streaming forever — surface it and finalize the turn.
+        console.warn('ws send failed', e);
+        this.turnFailed = '⚠ Failed to send request over WebSocket: ' + String((e as any)?.message ?? e);
+        this.accContent = this.turnFailed;
+        this.engine.setContent(this.accContent);
+        this.doneMeta = 'failed';
+        this.ws = undefined;
+        this.detach(ws);
+        void this.finalizeRun();
       }
     };
     ws.onmessage = (ev) => {
@@ -406,7 +419,18 @@ export class ChatSessionService {
       // Only the CURRENT socket may finalize a turn — a late close from a
       // replaced socket must not touch the run in flight.
       if (this.ws !== ws) return;
-      if (this.streaming()) void this.finalizeRun();
+      if (this.streaming()) {
+        // No Done frame before the socket closed: the server dropped us (e.g.
+        // payload over the frame limit). Show a real error instead of the
+        // silent "(stopped — no output)".
+        if (!this.sawDone && !this.turnCancelled && !this.turnFailed) {
+          this.turnFailed = `⚠ Connection closed before the server responded (request payload was ${(bytes.byteLength / (1024 * 1024)).toFixed(1)} MiB — check image sizes or server logs).`;
+          this.accContent = this.turnFailed;
+          this.engine.setContent(this.accContent);
+          this.doneMeta = 'failed';
+        }
+        void this.finalizeRun();
+      }
     };
   }
 
@@ -422,6 +446,7 @@ export class ChatSessionService {
       this.engine.applyStats(frame.stats);
       this.scheduleRender();
     } else if (frame.done) {
+      this.sawDone = true;
       if (frame.done.error) {
         // Upstream failure (e.g. the model rejected an image): show the
         // reason as this turn's output so it is visible everywhere.
@@ -449,6 +474,14 @@ export class ChatSessionService {
     this.stopping.set(false);
     this.turnCancelled = false;
     this.requestId = '';
+    // A failed turn must not poison every subsequent turn: the base64 images
+    // stay in the conversation otherwise, and the next (text-only) turn would
+    // re-send the whole oversized history and fail identically. Drop them on
+    // failure so follow-ups are small again (the failure is already surfaced
+    // above as the assistant bubble's error text).
+    if (this.turnFailed) {
+      this.messages.update((m) => m.map((msg) => (msg.role === 'user' ? { ...msg, images: undefined } : msg)));
+    }
     const meta = cancelled
       ? [this.doneMeta, 'CANCELLED'].filter(Boolean).join(' · ')
       : this.doneMeta;

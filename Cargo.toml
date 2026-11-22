@@ -1,6 +1,6 @@
 [package]
 name = "velobench"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 description = "VeloBench — LLM live-stats benchmarking and chat console"
 license = "MIT"
@@ -76,3 +76,7 @@ prost-build = "0.13"
 lto = true
 codegen-units = 1
 opt-level = 3
+
+[dev-dependencies]
+tokio-tungstenite = "0.29"
+futures-util = "0.3"

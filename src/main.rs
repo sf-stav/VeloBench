@@ -29,6 +29,8 @@ mod stats;
 mod tests;
 #[cfg(test)]
 mod corpus_test;
+#[cfg(test)]
+mod limits_test;
 mod tokenizer;
 mod turn_store;
 mod ws;

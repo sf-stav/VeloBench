@@ -139,16 +139,33 @@ pub struct LiveRunInfo {
     pub fill_tokens: u32,
 }
 
+/// Max WebSocket frame/message size. The browser sends one whole ChatRequest
+/// (conversation history incl. every base64 data-URL image) as a single
+/// unfragmented frame, so this must match the upstream providers' body
+/// capacity (gb10_inference accepts 128 MiB) plus base64 inflation headroom.
+const MAX_WS_BYTES: usize = 256 * 1024 * 1024;
+
 pub async fn ws_handler(ws: WebSocketUpgrade, State(st): State<AppState>) -> Response {
-    ws.on_upgrade(move |socket| run(socket, st))
+    ws.max_frame_size(MAX_WS_BYTES)
+        .max_message_size(MAX_WS_BYTES)
+        .write_buffer_size(256 * 1024)
+        .on_upgrade(move |socket| run(socket, st))
 }
 
 async fn run(mut socket: WebSocket, st: AppState) {
     // First message: the (protobuf) ChatRequest.
     let req_msg = match socket.recv().await {
         Some(Ok(m)) => m,
-        other => {
-            tracing::warn!("ws: no request message ({other:?})");
+        Some(Err(e)) => {
+            // e.g. Capacity(MessageTooLong) when a multi-image history exceeds
+            // the frame limit — surface it instead of dropping silently, and
+            // best-effort tell the client before the stream tears down.
+            tracing::warn!(error = %e, "ws: failed to read request message");
+            let _ = send_frame(&mut socket, &error_done(format!("request message error: {e}"))).await;
+            return;
+        }
+        None => {
+            tracing::warn!("ws: socket closed before a request message arrived");
             return;
         }
     };
